@@ -1,0 +1,111 @@
+from datetime import date
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel
+
+
+class StaffBase(BaseModel):
+    name: str
+    pedi_qualified: bool = False
+    cv_qualified: bool = False
+    specialties: List[str] = []
+    availability: Dict[str, Any] = {}
+
+
+class MDCreate(StaffBase):
+    pass
+
+
+class MDUpdate(BaseModel):
+    name: Optional[str] = None
+    pedi_qualified: Optional[bool] = None
+    cv_qualified: Optional[bool] = None
+    specialties: Optional[List[str]] = None
+    availability: Optional[Dict[str, Any]] = None
+
+
+class MDOut(StaffBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class CRNACreate(StaffBase):
+    pass
+
+
+class CRNAUpdate(MDUpdate):
+    pass
+
+
+class CRNAOut(StaffBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class FacilityBase(BaseModel):
+    site_name: str
+    staffing_requirements: Dict[str, Any] = {}
+
+
+class FacilityCreate(FacilityBase):
+    pass
+
+
+class FacilityUpdate(BaseModel):
+    site_name: Optional[str] = None
+    staffing_requirements: Optional[Dict[str, Any]] = None
+
+
+class FacilityOut(FacilityBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class ScheduleBase(BaseModel):
+    date: date
+    facility_id: int
+    md_ids: List[int] = []
+    crna_ids: List[int] = []
+    call_assignments: Dict[str, Any] = {}
+
+
+class ScheduleCreate(ScheduleBase):
+    pass
+
+
+class ScheduleUpdate(BaseModel):
+    md_ids: Optional[List[int]] = None
+    crna_ids: Optional[List[int]] = None
+    call_assignments: Optional[Dict[str, Any]] = None
+
+
+class ScheduleOut(ScheduleBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+
+    class Config:
+        from_attributes = True
