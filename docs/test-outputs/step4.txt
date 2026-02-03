@@ -1,0 +1,7 @@
+Command: python3 -m pytest backend/app/tests -q
+Output:
+/Library/Developer/CommandLineTools/usr/bin/python3: No module named pytest
+
+Command: npm --prefix frontend run lint
+Output:
+zsh:1: command not found: npm

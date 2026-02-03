@@ -86,6 +86,7 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleOut(ScheduleBase):
     id: int
+    facility: Optional[FacilityOut] = None
 
     class Config:
         from_attributes = True
