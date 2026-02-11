@@ -16,8 +16,15 @@ def create_crna(
 
 
 @router.get("/", response_model=list[schemas.CRNAOut])
-def list_crnas(db: Session = Depends(get_db), _user=Depends(get_current_user)):
-    return db.query(models.CRNA).all()
+def list_crnas(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    query = db.query(models.CRNA)
+    if not include_inactive:
+        query = query.filter(models.CRNA.active.is_(True))
+    return query.all()
 
 
 @router.get("/{crna_id}", response_model=schemas.CRNAOut)

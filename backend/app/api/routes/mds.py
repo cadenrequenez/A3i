@@ -16,8 +16,15 @@ def create_md(
 
 
 @router.get("/", response_model=list[schemas.MDOut])
-def list_mds(db: Session = Depends(get_db), _user=Depends(get_current_user)):
-    return db.query(models.MD).all()
+def list_mds(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    query = db.query(models.MD)
+    if not include_inactive:
+        query = query.filter(models.MD.active.is_(True))
+    return query.all()
 
 
 @router.get("/{md_id}", response_model=schemas.MDOut)

@@ -1,0 +1,7 @@
+Command: npm --prefix frontend run lint
+Output:
+zsh:1: command not found: npm
+
+Command: npm --prefix frontend run test
+Output:
+zsh:1: command not found: npm

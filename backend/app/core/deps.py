@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.core import token_blacklist
 from app.db.session import SessionLocal
 from app import models
 
@@ -27,6 +28,9 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if token_blacklist.is_blacklisted(token):
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         username: str | None = payload.get("sub")

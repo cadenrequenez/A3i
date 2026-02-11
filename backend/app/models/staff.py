@@ -8,6 +8,7 @@ class MD(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
+    active = Column(Boolean, nullable=False, default=True)
     pedi_qualified = Column(Boolean, nullable=False, default=False)
     cv_qualified = Column(Boolean, nullable=False, default=False)
     specialties = Column(JSONB, nullable=False, default=list)
@@ -19,6 +20,7 @@ class CRNA(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
+    active = Column(Boolean, nullable=False, default=True)
     pedi_qualified = Column(Boolean, nullable=False, default=False)
     cv_qualified = Column(Boolean, nullable=False, default=False)
     specialties = Column(JSONB, nullable=False, default=list)

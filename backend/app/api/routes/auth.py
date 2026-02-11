@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app import crud, models, schemas
-from app.core.deps import get_db
+from app.core.deps import get_db, get_current_user, oauth2_scheme
 from app.core.security import create_access_token, verify_password
+from app.core import token_blacklist
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -26,3 +27,9 @@ def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
     return crud.create_user(db, data)
+
+
+@router.post("/logout")
+def logout(token: str = Depends(oauth2_scheme), _user=Depends(get_current_user)):
+    token_blacklist.add(token)
+    return {"status": "logged_out"}

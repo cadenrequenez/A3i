@@ -2,9 +2,9 @@ import { useMemo } from "react";
 import type { FacilityColorMap, ScheduleEntry } from "../lib/types";
 
 const facilityColors: FacilityColorMap = {
-  "Rio Hospital": "bg-rose-500",
-  "Rio Surgical Center": "bg-indigo-500",
-  "Driscoll Hospital (McAllen)": "bg-emerald-500",
+  "Rio Grande Regional Hospital": "bg-rose-500",
+  "Rio Grande Regional Surgical Center": "bg-indigo-500",
+  "Driscoll Children's Hospital (McAllen)": "bg-emerald-500",
   "UTRGV Surgical Center": "bg-amber-500"
 };
 
@@ -14,6 +14,10 @@ type CalendarProps = {
   selectedDate: string;
   onSelectDate: (date: string) => void;
 };
+
+function toLocalDateString(value: Date) {
+  return value.toLocaleDateString("en-CA");
+}
 
 function buildMonthGrid(currentDate: Date) {
   const year = currentDate.getFullYear();
@@ -46,8 +50,12 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
             <span className={`h-3 w-3 rounded-full ${facilityColors[entry.facility] || "bg-slate-400"}`} />
             <div>
               <p className="text-sm font-semibold">{entry.facility}</p>
-              <p className="text-xs text-slate-600">MDs: {entry.mdIds.join(", ") || "TBD"}</p>
-              <p className="text-xs text-slate-600">CRNAs: {entry.crnaIds.join(", ") || "TBD"}</p>
+              <p className="text-xs text-slate-600">
+                1st Call: {entry.callFirstName || "TBD"}
+              </p>
+              <p className="text-xs text-slate-600">
+                2nd Call: {entry.callSecondName || "TBD"}
+              </p>
             </div>
           </div>
         ))}
@@ -58,8 +66,9 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
   return (
     <div className="grid grid-cols-7 gap-2">
       {monthGrid.map((day) => {
-        const iso = day.toISOString().slice(0, 10);
+        const iso = toLocalDateString(day);
         const daySchedules = schedules.filter((s) => s.date === iso);
+        const rioEntry = daySchedules.find((s) => s.facility === "Rio Grande Regional Hospital");
         return (
           <button
             key={iso}
@@ -81,6 +90,12 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
                 />
               ))}
             </div>
+            {rioEntry && (
+              <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                <div>1st: {rioEntry.callFirstName || "TBD"}</div>
+                <div>2nd: {rioEntry.callSecondName || "TBD"}</div>
+              </div>
+            )}
           </button>
         );
       })}

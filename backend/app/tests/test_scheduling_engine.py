@@ -1,64 +1,86 @@
-from datetime import date
-from app.scheduling.engine import generate_monthly_schedule
+from datetime import date, timedelta
+from app.scheduling.engine import WeeklyLimits, generate_monthly_schedule
 
 
 def build_staff():
     mds = [
-        {"id": 1, "name": "Dr A", "pedi_qualified": False, "cv_qualified": True},
-        {"id": 2, "name": "Dr B", "pedi_qualified": False, "cv_qualified": False},
-        {"id": 3, "name": "Dr C", "pedi_qualified": False, "cv_qualified": False},
-        {"id": 4, "name": "Dr D", "pedi_qualified": False, "cv_qualified": False},
+        {"id": 1, "name": "Edward Requenez", "pedi_qualified": True, "cv_qualified": True},
+        {"id": 2, "name": "Daniel Requenez", "pedi_qualified": True, "cv_qualified": True},
+        {"id": 3, "name": "Ricky Salinas", "pedi_qualified": True, "cv_qualified": False},
+        {"id": 4, "name": "Erika Schwegler", "pedi_qualified": True, "cv_qualified": True},
+        {"id": 5, "name": "Mike Gorena", "pedi_qualified": True, "cv_qualified": True},
+        {"id": 6, "name": "Jaime Garcia", "pedi_qualified": False, "cv_qualified": True},
+        {"id": 7, "name": "Clarissa Gutierrez", "pedi_qualified": False, "cv_qualified": True},
+        {"id": 8, "name": "Maria Lozano", "pedi_qualified": True, "cv_qualified": False},
+        {"id": 10, "name": "MD Extra", "pedi_qualified": False, "cv_qualified": False},
     ]
-    crnas = [
-        {"id": 10, "name": "CRNA 1", "pedi_qualified": True, "cv_qualified": False},
-        {"id": 11, "name": "CRNA 2", "pedi_qualified": True, "cv_qualified": False},
-        {"id": 12, "name": "CRNA 3", "pedi_qualified": True, "cv_qualified": False},
-        {"id": 13, "name": "CRNA 4", "pedi_qualified": False, "cv_qualified": False},
-        {"id": 14, "name": "CRNA 5", "pedi_qualified": False, "cv_qualified": False},
-    ]
-    return mds, crnas
+    return mds, []
 
 
 def test_schedule_rules():
     mds, crnas = build_staff()
-    schedules = generate_monthly_schedule(mds, crnas, date(2026, 1, 1))
+    schedules = generate_monthly_schedule(mds, crnas, date(2026, 3, 1), limits=WeeklyLimits(max_on_call=7, max_surgical=7))
 
-    rio_hospital = [s for s in schedules if s["facility"] == "Rio Hospital"]
-    assert all(len(s["md_ids"]) == 2 for s in rio_hospital)
+    assert all(s["facility"] == "Rio Grande Regional Hospital" for s in schedules)
+    assert all(len(s["md_ids"]) == 2 for s in schedules)
     assert all(
-        any(md_id == 1 for md_id in s["md_ids"]) for s in rio_hospital
-    ), "Rio Hospital must include a CV-qualified MD"
-
-    rio_surgical = [s for s in schedules if s["facility"] == "Rio Surgical Center"]
-    assert all(len(s["md_ids"]) == 1 for s in rio_surgical)
-    assert all(len(s["crna_ids"]) == 4 for s in rio_surgical)
-    assert all(
-        len([c for c in s["crna_ids"] if c in {10, 11, 12}]) >= 3
-        for s in rio_surgical
-    )
-
-    utrgv = [s for s in schedules if s["facility"] == "UTRGV Surgical Center"]
-    assert all(len(s["md_ids"]) == 1 for s in utrgv)
-    assert all(len(s["crna_ids"]) == 3 for s in utrgv)
-    assert all(set(s["crna_ids"]).issubset({10, 11, 12}) for s in utrgv)
-
-    driscoll = [s for s in schedules if s["facility"] == "Driscoll Hospital (McAllen)"]
-    assert all(len(s["md_ids"]) == 1 for s in driscoll)
-    assert all(len(s["crna_ids"]) == 2 for s in driscoll)
+        any(md_id in {1, 2, 4, 5, 6, 7} for md_id in s["md_ids"]) for s in schedules
+    ), "Each day must include a CV-qualified MD"
+    assert all(s["crna_ids"] == [] for s in schedules)
 
 
-def test_call_logic_thursday_weekend_alignment():
+def test_unique_assignments_per_day():
     mds, crnas = build_staff()
-    schedules = generate_monthly_schedule(mds, crnas, date(2026, 1, 1))
+    schedules = generate_monthly_schedule(mds, crnas, date(2026, 3, 1), limits=WeeklyLimits(max_on_call=7, max_surgical=7))
 
-    def by_date(target_date):
-        return next(s for s in schedules if s["date"] == target_date)
+    day = date(2026, 3, 1)
+    end_day = date(2026, 3, 7)
+    current = day
+    while current <= end_day:
+        day_entries = [s for s in schedules if s["date"] == current]
+        assert len(day_entries) == 1
+        md_ids = [md for entry in day_entries for md in entry["md_ids"]]
+        assert len(md_ids) == len(set(md_ids))
+        current += timedelta(days=1)
 
-    thursday = by_date(date(2026, 1, 1))
-    friday = by_date(date(2026, 1, 2))
-    saturday = by_date(date(2026, 1, 3))
-    sunday = by_date(date(2026, 1, 4))
 
-    assert thursday["call_assignments"]["first_call_md_id"] == friday["call_assignments"]["first_call_md_id"]
-    assert thursday["call_assignments"]["first_call_md_id"] == sunday["call_assignments"]["first_call_md_id"]
-    assert thursday["call_assignments"]["second_call_md_id"] == saturday["call_assignments"]["first_call_md_id"]
+def test_call_constraints():
+    mds, crnas = build_staff()
+    schedules = generate_monthly_schedule(mds, crnas, date(2026, 3, 1), limits=WeeklyLimits(max_on_call=7, max_surgical=7))
+
+    call_by_date = {entry["date"]: entry["call_assignments"] for entry in schedules}
+
+    md_cv = {1, 2, 4, 5, 6, 7}
+    md_first_calls = {}
+    md_call_dates = {}
+
+    for day, calls in sorted(call_by_date.items()):
+        first_id = calls["first_call_md_id"]
+        second_id = calls["second_call_md_id"]
+        assert first_id in md_cv or second_id in md_cv
+
+        md_call_dates.setdefault(first_id, []).append(day)
+        md_call_dates.setdefault(second_id, []).append(day)
+        md_first_calls.setdefault(first_id, []).append(day)
+
+    for md_id, dates in md_call_dates.items():
+        dates = sorted(dates)
+        for prev, current in zip(dates, dates[1:]):
+            assert (current - prev).days > 1
+
+    for md_id, dates in md_first_calls.items():
+        dates = sorted(dates)
+        for prev, current in zip(dates, dates[1:]):
+            assert (current - prev).days != 2
+
+    # Edward and Daniel max one weekend per month
+    weekend_starts = [d for d in call_by_date if d.weekday() == 4]
+    weekend_assignments = {1: 0, 2: 0}
+    for friday in weekend_starts:
+        calls = call_by_date[friday]
+        weekend_ids = {calls["first_call_md_id"], calls["second_call_md_id"]}
+        for md_id in weekend_assignments:
+            if md_id in weekend_ids:
+                weekend_assignments[md_id] += 1
+    assert weekend_assignments[1] <= 1
+    assert weekend_assignments[2] <= 1

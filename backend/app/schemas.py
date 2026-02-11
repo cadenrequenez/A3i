@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class StaffBase(BaseModel):
     name: str
+    active: bool = True
     pedi_qualified: bool = False
     cv_qualified: bool = False
     specialties: List[str] = []
@@ -17,6 +18,7 @@ class MDCreate(StaffBase):
 
 class MDUpdate(BaseModel):
     name: Optional[str] = None
+    active: Optional[bool] = None
     pedi_qualified: Optional[bool] = None
     cv_qualified: Optional[bool] = None
     specialties: Optional[List[str]] = None
@@ -90,6 +92,20 @@ class ScheduleOut(ScheduleBase):
 
     class Config:
         from_attributes = True
+
+
+class ScheduleGenerateRequest(BaseModel):
+    year: int
+    month: int
+    overwrite: bool = True
+    max_on_call: Optional[int] = None
+    max_surgical: Optional[int] = None
+
+
+class ScheduleGenerateResponse(BaseModel):
+    created: int
+    start_date: date
+    end_date: date
 
 
 class Token(BaseModel):

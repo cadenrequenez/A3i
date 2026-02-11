@@ -3,6 +3,8 @@
 import { useState } from "react";
 import TabNav from "../components/TabNav";
 import ScheduleBoard from "../components/ScheduleBoard";
+import StaffList from "../components/StaffList";
+import SitesList from "../components/SitesList";
 
 const TABS = ["Schedule", "Staff", "Sites", "Analytics"] as const;
 
@@ -21,18 +23,8 @@ export default function DashboardPage() {
       <TabNav activeTab={activeTab} tabs={[...TABS]} onChange={setActiveTab} />
 
       {activeTab === "Schedule" && <ScheduleBoard />}
-      {activeTab === "Staff" && (
-        <section className="rounded-xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold">Staff</h2>
-          <p className="text-sm text-slate-600">Manage MD and CRNA profiles, qualifications, and availability.</p>
-        </section>
-      )}
-      {activeTab === "Sites" && (
-        <section className="rounded-xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold">Sites</h2>
-          <p className="text-sm text-slate-600">Configure facility staffing requirements and coverage rules.</p>
-        </section>
-      )}
+      {activeTab === "Staff" && <StaffList />}
+      {activeTab === "Sites" && <SitesList />}
       {activeTab === "Analytics" && (
         <section className="rounded-xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold">Analytics</h2>

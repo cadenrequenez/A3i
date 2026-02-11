@@ -20,6 +20,8 @@
 - Run API: `cd backend && uvicorn app.main:app --reload`
 - Run migrations: `cd backend && alembic upgrade head`
 - Create migration: `cd backend && alembic revision --autogenerate -m "<message>"`
+- Seed data: `python3 backend/scripts/seed_data.py`
+  - To overwrite existing data: `SEED_OVERWRITE=1 python3 backend/scripts/seed_data.py`
 - Run tests: `python3 -m pytest backend/app/tests`
 
 ## Frontend Commands

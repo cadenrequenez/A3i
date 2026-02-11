@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const PROTECTED_PATHS = ["/"];
+const PUBLIC_PATHS = ["/login", "/welcome"];
 const ADMIN_PATHS = ["/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (!PROTECTED_PATHS.some((path) => pathname.startsWith(path)) || pathname.startsWith("/login")) {
+  if (!PROTECTED_PATHS.some((path) => pathname.startsWith(path)) || PUBLIC_PATHS.includes(pathname)) {
     return NextResponse.next();
   }
 
   const token = request.cookies.get("a3i_token")?.value;
   if (!token) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL("/welcome", request.url));
   }
 
   try {
