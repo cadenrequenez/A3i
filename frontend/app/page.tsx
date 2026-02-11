@@ -20,7 +20,7 @@ export default function DashboardPage() {
         </p>
       </header>
 
-      <TabNav activeTab={activeTab} tabs={[...TABS]} onChange={setActiveTab} />
+      <TabNav activeTab={activeTab} tabs={[...TABS]} onChange={(tab) => setActiveTab(tab as (typeof TABS)[number])} />
 
       {activeTab === "Schedule" && <ScheduleBoard />}
       {activeTab === "Staff" && <StaffList />}
