@@ -19,26 +19,21 @@ function toLocalDateString(value: Date) {
   return value.toLocaleDateString("en-CA");
 }
 
-function buildMonthGrid(currentDate: Date) {
+function buildMonthDays(currentDate: Date) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
-  const start = new Date(first);
-  start.setDate(first.getDate() - first.getDay());
-
   const days: Date[] = [];
-  const cursor = new Date(start);
-  while (cursor <= last || cursor.getDay() !== 0) {
-    days.push(new Date(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+  for (let day = 1; day <= last.getDate(); day += 1) {
+    days.push(new Date(year, month, day));
   }
-  return days;
+  return { days, leadingEmptyCells: first.getDay() };
 }
 
 export default function Calendar({ schedules, view, selectedDate, onSelectDate }: CalendarProps) {
   const currentDate = new Date(selectedDate);
-  const monthGrid = useMemo(() => buildMonthGrid(currentDate), [currentDate]);
+  const { days: monthDays, leadingEmptyCells } = useMemo(() => buildMonthDays(currentDate), [currentDate]);
 
   if (view === "day") {
     const daySchedules = schedules.filter((s) => s.date === selectedDate);
@@ -64,8 +59,19 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
   }
 
   return (
-    <div className="grid grid-cols-7 gap-2">
-      {monthGrid.map((day) => {
+    <div className="space-y-2">
+      <div className="grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+          <div key={label} className="px-1">
+            {label}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-2">
+        {Array.from({ length: leadingEmptyCells }).map((_, index) => (
+          <div key={`empty-${index}`} className="rounded-lg border border-transparent p-2" />
+        ))}
+        {monthDays.map((day) => {
         const iso = toLocalDateString(day);
         const daySchedules = schedules.filter((s) => s.date === iso);
         const rioEntry = daySchedules.find((s) => s.facility === "Rio Grande Regional Hospital");
@@ -101,6 +107,7 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
           </button>
         );
       })}
+      </div>
     </div>
   );
 }

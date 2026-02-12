@@ -26,6 +26,7 @@ export default function ScheduleBoard() {
   const [mdMap, setMdMap] = useState<Record<number, string>>({});
   const [editCallFirst, setEditCallFirst] = useState<number | null>(null);
   const [editCallSecond, setEditCallSecond] = useState<number | null>(null);
+  const [isGeneratingYear, setIsGeneratingYear] = useState(false);
 
   const loadSchedules = () => {
     const token = getToken();
@@ -108,6 +109,30 @@ export default function ScheduleBoard() {
     setMonth(Number(nextDate.slice(5, 7)));
     setYear(Number(nextDate.slice(0, 4)));
     setView("month");
+  };
+
+  const generateFullYear = async () => {
+    const token = getToken() || undefined;
+    if (!token) {
+      setStatus("Missing auth token.");
+      return;
+    }
+    setIsGeneratingYear(true);
+    setStatus(`Generating all months for ${year}...`);
+    try {
+      for (let m = 1; m <= 12; m += 1) {
+        await generateSchedule(year, m, overwrite, token);
+      }
+      await loadSchedules();
+      setSelectedDate(`${year}-01-01`);
+      setMonth(1);
+      setView("month");
+      setStatus(`Generated schedule for all 12 months of ${year}.`);
+    } catch (error) {
+      setStatus((error as Error).message || "Failed to generate full year.");
+    } finally {
+      setIsGeneratingYear(false);
+    }
   };
 
   const postCallName = useMemo(() => {
@@ -250,6 +275,13 @@ export default function ScheduleBoard() {
             }}
           >
             Generate Schedule
+          </button>
+          <button
+            className="rounded-full bg-sky-800 px-4 py-2 text-sm text-white disabled:opacity-50"
+            disabled={role !== "admin" || isGeneratingYear}
+            onClick={generateFullYear}
+          >
+            {isGeneratingYear ? "Generating Year..." : "Generate Full Year"}
           </button>
           {role !== "admin" && <span className="text-xs text-slate-500">Admin only</span>}
         </div>
