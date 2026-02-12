@@ -13,16 +13,13 @@ import { getRole, getToken } from "../lib/auth";
 
 const RIO_FACILITY = "Rio Grande Regional Hospital";
 
-const fallbackSchedules: ScheduleEntry[] = [
-  { date: "2026-03-01", facility: RIO_FACILITY, mdIds: [1, 2], crnaIds: [] }
-];
-
 export default function ScheduleBoard() {
+  const todayIso = new Date().toISOString().slice(0, 10);
   const [view, setView] = useState<"month" | "day">("month");
-  const [selectedDate, setSelectedDate] = useState("2026-03-01");
-  const [schedules, setSchedules] = useState<ScheduleEntry[]>(fallbackSchedules);
-  const [month, setMonth] = useState(3);
-  const [year, setYear] = useState(2026);
+  const [selectedDate, setSelectedDate] = useState(todayIso);
+  const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
+  const [month, setMonth] = useState(Number(todayIso.slice(5, 7)));
+  const [year, setYear] = useState(Number(todayIso.slice(0, 4)));
   const [overwrite, setOverwrite] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [role, setRole] = useState<"admin" | "read-only">("read-only");
@@ -35,18 +32,22 @@ export default function ScheduleBoard() {
     return fetchSchedules(token)
       .then((data) => {
         const rioOnly = data.filter((entry) => entry.facility === RIO_FACILITY);
-        if (rioOnly.length > 0) {
-          const hydrated = rioOnly.map((entry) => {
-            const firstId = entry.callAssignments?.first_call_md_id ?? null;
-            const secondId = entry.callAssignments?.second_call_md_id ?? null;
-            return {
-              ...entry,
-              mdNames: entry.mdIds.map((id) => mdMap[id]).filter(Boolean),
-              callFirstName: firstId ? mdMap[firstId] || String(firstId) : undefined,
-              callSecondName: secondId ? mdMap[secondId] || String(secondId) : undefined
-            };
-          });
-          setSchedules(hydrated);
+        const hydrated = rioOnly.map((entry) => {
+          const firstId = entry.callAssignments?.first_call_md_id ?? null;
+          const secondId = entry.callAssignments?.second_call_md_id ?? null;
+          return {
+            ...entry,
+            mdNames: entry.mdIds.map((id) => mdMap[id]).filter(Boolean),
+            callFirstName: firstId ? mdMap[firstId] || String(firstId) : undefined,
+            callSecondName: secondId ? mdMap[secondId] || String(secondId) : undefined
+          };
+        });
+        setSchedules(hydrated);
+        if (hydrated.length > 0 && !hydrated.some((entry) => entry.date === selectedDate)) {
+          const firstDate = hydrated[0].date;
+          setSelectedDate(firstDate);
+          setMonth(Number(firstDate.slice(5, 7)));
+          setYear(Number(firstDate.slice(0, 4)));
         }
       })
       .catch(() => undefined);
@@ -98,6 +99,17 @@ export default function ScheduleBoard() {
     }
   }, [selectedDate, hydratedSchedules]);
 
+  const shiftMonth = (delta: number) => {
+    const current = new Date(`${selectedDate}T00:00:00`);
+    current.setMonth(current.getMonth() + delta);
+    current.setDate(1);
+    const nextDate = current.toISOString().slice(0, 10);
+    setSelectedDate(nextDate);
+    setMonth(Number(nextDate.slice(5, 7)));
+    setYear(Number(nextDate.slice(0, 4)));
+    setView("month");
+  };
+
   const postCallName = useMemo(() => {
     const currentDate = new Date(selectedDate);
     currentDate.setDate(currentDate.getDate() - 1);
@@ -124,7 +136,10 @@ export default function ScheduleBoard() {
             type="date"
             value={selectedDate}
             onChange={(event) => {
-              setSelectedDate(event.target.value);
+              const nextDate = event.target.value;
+              setSelectedDate(nextDate);
+              setMonth(Number(nextDate.slice(5, 7)));
+              setYear(Number(nextDate.slice(0, 4)));
               setView("day");
             }}
             className="rounded border border-slate-200 px-2 py-1 text-sm"
@@ -155,7 +170,15 @@ export default function ScheduleBoard() {
               min={1}
               max={12}
               value={month}
-              onChange={(event) => setMonth(Number(event.target.value))}
+              onChange={(event) => {
+                const nextMonth = Number(event.target.value);
+                if (Number.isNaN(nextMonth) || nextMonth < 1 || nextMonth > 12) {
+                  return;
+                }
+                setMonth(nextMonth);
+                setSelectedDate(`${year}-${String(nextMonth).padStart(2, "0")}-01`);
+                setView("month");
+              }}
               className="w-16 rounded border border-slate-200 px-2 py-1"
             />
           </div>
@@ -166,10 +189,41 @@ export default function ScheduleBoard() {
               min={2024}
               max={2100}
               value={year}
-              onChange={(event) => setYear(Number(event.target.value))}
+              onChange={(event) => {
+                const nextYear = Number(event.target.value);
+                if (Number.isNaN(nextYear) || nextYear < 2024 || nextYear > 2100) {
+                  return;
+                }
+                setYear(nextYear);
+                setSelectedDate(`${nextYear}-${String(month).padStart(2, "0")}-01`);
+                setView("month");
+              }}
               className="w-24 rounded border border-slate-200 px-2 py-1"
             />
           </div>
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
+            onClick={() => shiftMonth(-1)}
+          >
+            Prev month
+          </button>
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
+            onClick={() => shiftMonth(1)}
+          >
+            Next month
+          </button>
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
+            onClick={() => {
+              setSelectedDate(todayIso);
+              setMonth(Number(todayIso.slice(5, 7)));
+              setYear(Number(todayIso.slice(0, 4)));
+              setView("month");
+            }}
+          >
+            Jump to today
+          </button>
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -188,7 +242,8 @@ export default function ScheduleBoard() {
                 await loadSchedules();
                 const paddedMonth = String(month).padStart(2, "0");
                 setSelectedDate(`${year}-${paddedMonth}-01`);
-                setStatus("Schedule generated.");
+                setView("month");
+                setStatus(`Schedule generated for ${year}-${paddedMonth}.`);
               } catch (error) {
                 setStatus((error as Error).message);
               }
@@ -205,8 +260,8 @@ export default function ScheduleBoard() {
         <p className="font-semibold">Quick steps</p>
         <ol className="mt-2 list-decimal pl-5">
           <li>Pick month/year and click Generate Schedule.</li>
-          <li>Switch to Day view and choose a date.</li>
-          <li>Edit call assignments in the Call section.</li>
+          <li>Use Prev/Next month to move fast across months.</li>
+          <li>Switch to Day view, pick a date, and edit call assignments.</li>
         </ol>
       </div>
 
@@ -272,6 +327,7 @@ export default function ScheduleBoard() {
                   <button
                     className="rounded bg-slate-900 px-3 py-1 text-xs text-white"
                     onClick={async () => {
+                      setStatus(null);
                       const payload = {
                         first_call_md_id: editCallFirst,
                         second_call_md_id: editCallSecond
@@ -288,6 +344,7 @@ export default function ScheduleBoard() {
                           )
                       );
                       await loadSchedules();
+                      setStatus("Call assignments saved.");
                     }}
                   >
                     Save call
