@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 
 const PROTECTED_PATHS = ["/"];
 const PUBLIC_PATHS = ["/login", "/welcome"];
@@ -7,6 +6,16 @@ const ADMIN_PATHS = ["/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isStaticAsset =
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/logos/") ||
+    pathname === "/favicon.ico" ||
+    /\.[a-zA-Z0-9]+$/.test(pathname);
+
+  if (isStaticAsset) {
+    return NextResponse.next();
+  }
+
   if (!PROTECTED_PATHS.some((path) => pathname.startsWith(path)) || PUBLIC_PATHS.includes(pathname)) {
     return NextResponse.next();
   }
@@ -16,20 +25,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/welcome", request.url));
   }
 
-  try {
-    const secret = new TextEncoder().encode(process.env.NEXT_JWT_SECRET || "change-me");
-    const { payload } = await jwtVerify(token, secret);
-    const role = payload.role as string | undefined;
-
-    if (ADMIN_PATHS.some((path) => pathname.startsWith(path)) && role !== "admin") {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-    return NextResponse.next();
-  } catch {
-    return NextResponse.redirect(new URL("/login", request.url));
+  const role = request.cookies.get("a3i_role")?.value;
+  if (ADMIN_PATHS.some((path) => pathname.startsWith(path)) && role !== "admin") {
+    return NextResponse.redirect(new URL("/", request.url));
   }
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico).*)"]
+  matcher: ["/:path*"]
 };
