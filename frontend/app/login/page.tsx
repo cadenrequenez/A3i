@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
@@ -13,6 +13,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [slowLoginHint, setSlowLoginHint] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_URL}/`, { method: "GET" }).catch(() => undefined);
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -21,6 +26,7 @@ export default function LoginPage() {
     }
     setError(null);
     setIsSubmitting(true);
+    setSlowLoginHint(false);
     const normalizedUsername = username.trim();
     const normalizedPassword = password.trim();
 
@@ -30,12 +36,15 @@ export default function LoginPage() {
       return;
     }
 
+    let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
     try {
+      slowHintTimer = setTimeout(() => setSlowLoginHint(true), 4000);
       const response = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword })
       });
+      clearTimeout(slowHintTimer);
       if (!response.ok) {
         throw new Error("Invalid credentials");
       }
@@ -53,6 +62,9 @@ export default function LoginPage() {
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      if (slowHintTimer) {
+        clearTimeout(slowHintTimer);
+      }
       setIsSubmitting(false);
     }
   };
@@ -85,6 +97,11 @@ export default function LoginPage() {
           />
         </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
+        {slowLoginHint && (
+          <p className="text-sm text-slate-600">
+            Sign in is taking longer than usual. Backend may be waking up, please wait a few seconds.
+          </p>
+        )}
         <button
           type="submit"
           disabled={isSubmitting}

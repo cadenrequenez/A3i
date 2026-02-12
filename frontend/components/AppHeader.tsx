@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 export default function AppHeader() {
   const pathname = usePathname();
   const isWelcome = pathname === "/welcome";
-  const logoSrc = isWelcome ? "/logos/a3i-dark.png" : "/logos/a3i-light.png";
+  const logoSrc = isWelcome ? "/logos/a3i-light.png" : "/logos/a3i-dark.png";
 
   return (
     <header className="mx-auto w-full max-w-6xl px-6 pb-4 pt-6">
