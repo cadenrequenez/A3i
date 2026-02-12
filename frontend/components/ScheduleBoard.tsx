@@ -113,7 +113,7 @@ export default function ScheduleBoard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="surface-card flex items-center justify-between rounded-xl p-4">
         <div>
           <h2 className="text-xl font-semibold">Schedule</h2>
           <p className="text-sm text-slate-600">Manage Rio Grande Regional Hospital MD call coverage.</p>
@@ -146,7 +146,7 @@ export default function ScheduleBoard() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="surface-card rounded-xl p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-sm">
             <label className="text-slate-600">Month</label>
@@ -201,7 +201,7 @@ export default function ScheduleBoard() {
         {status && <p className="mt-2 text-sm text-slate-600">{status}</p>}
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+      <div className="surface-card rounded-xl p-4 text-sm text-slate-700">
         <p className="font-semibold">Quick steps</p>
         <ol className="mt-2 list-decimal pl-5">
           <li>Pick month/year and click Generate Schedule.</li>
@@ -227,7 +227,7 @@ export default function ScheduleBoard() {
             <p className="text-sm text-slate-500">No schedule entries for this day.</p>
           )}
           {daySchedules[0]?.callAssignments && (
-            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+            <div className="surface-card rounded-lg p-3 text-sm text-slate-700">
               <p className="font-semibold">Call Assignments</p>
               <p>
                 1st Call:{" "}
@@ -298,7 +298,7 @@ export default function ScheduleBoard() {
           )}
           <div className="space-y-2">
             {daySchedules.map((entry) => (
-              <div key={`${entry.date}-${entry.facility}`} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div key={`${entry.date}-${entry.facility}`} className="surface-card rounded-lg p-3">
                 <div>
                   <p className="font-semibold">{entry.facility}</p>
                   <p className="text-xs text-slate-600">

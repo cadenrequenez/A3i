@@ -26,7 +26,7 @@ export default function SitesList() {
       <div className="grid gap-4 md:grid-cols-2">
         {sites.length === 0 && <p className="text-sm text-slate-500">No facilities found.</p>}
         {sites.map((site) => (
-          <div key={site.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div key={site.id} className="surface-card rounded-xl p-4">
             <h3 className="text-sm font-semibold">{site.site_name}</h3>
             <p className="mt-2 text-xs text-slate-500">Staffing requirements</p>
             <ul className="mt-2 text-sm text-slate-700">

@@ -46,7 +46,7 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Schedule for {selectedDate}</h3>
         {daySchedules.map((entry) => (
-          <div key={`${entry.facility}-${entry.date}`} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4">
+          <div key={`${entry.facility}-${entry.date}`} className="surface-card flex items-center gap-3 rounded-lg p-4">
             <span className={`h-3 w-3 rounded-full ${facilityColors[entry.facility] || "bg-slate-400"}`} />
             <div>
               <p className="text-sm font-semibold">{entry.facility}</p>
@@ -73,8 +73,10 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
           <button
             key={iso}
             onClick={() => onSelectDate(iso)}
-            className={`rounded-lg border p-2 text-left text-sm ${
-              iso === selectedDate ? "border-slate-900 bg-white" : "border-slate-200 bg-white"
+            className={`rounded-lg border p-2 text-left text-sm transition ${
+              iso === selectedDate
+                ? "border-sky-900 bg-white shadow-lg shadow-sky-800/10"
+                : "border-slate-200 bg-white/85 hover:bg-white"
             }`}
           >
             <div className="flex items-center justify-between">

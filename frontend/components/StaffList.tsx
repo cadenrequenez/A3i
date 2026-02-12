@@ -37,7 +37,7 @@ export default function StaffList() {
           <p className="text-sm text-slate-600">Browse MD and CRNA profiles.</p>
         </div>
         <input
-          className="w-64 rounded border border-slate-200 px-3 py-2 text-sm"
+          className="w-64 rounded border border-slate-300 bg-white/80 px-3 py-2 text-sm"
           placeholder="Search staff"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -45,7 +45,7 @@ export default function StaffList() {
       </div>
       {error && <p className="text-sm text-rose-600">{error}</p>}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="surface-card rounded-xl p-4">
           <h3 className="text-sm font-semibold">MDs</h3>
           <ul className="mt-3 space-y-2 text-sm">
             {filteredMds.length === 0 && <li className="text-slate-500">No MDs found.</li>}
@@ -62,7 +62,7 @@ export default function StaffList() {
             ))}
           </ul>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="surface-card rounded-xl p-4">
           <h3 className="text-sm font-semibold">CRNAs</h3>
           <ul className="mt-3 space-y-2 text-sm">
             {filteredCrnas.length === 0 && <li className="text-slate-500">No CRNAs found.</li>}

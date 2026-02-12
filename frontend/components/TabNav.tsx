@@ -8,16 +8,16 @@ type TabNavProps = {
 
 export default function TabNav({ activeTab, tabs, onChange }: TabNavProps) {
   return (
-    <div className="flex gap-2 border-b border-slate-200 pb-2">
+    <div className="surface-card flex flex-wrap gap-2 rounded-2xl p-3">
       {tabs.map((tab) => (
         <button
           key={tab}
           onClick={() => onChange(tab)}
           className={clsx(
-            "rounded-full px-4 py-2 text-sm font-semibold",
+            "rounded-full px-4 py-2 text-sm font-semibold transition",
             activeTab === tab
-              ? "bg-slate-900 text-white"
-              : "bg-white text-slate-700 border border-slate-200"
+              ? "bg-sky-900 text-white shadow-lg shadow-sky-900/25"
+              : "border border-slate-200 bg-white/70 text-slate-700 hover:bg-white"
           )}
         >
           {tab}
