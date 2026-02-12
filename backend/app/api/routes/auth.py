@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+import logging
 from app import crud, models, schemas
 from app.core.deps import get_db, get_current_user, oauth2_scheme
 from app.core.security import create_access_token, verify_password
 from app.core import token_blacklist
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/login", response_model=schemas.Token)
@@ -34,6 +36,13 @@ def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already exists",
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Unexpected error while creating user")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user",
         ) from exc
 
 
