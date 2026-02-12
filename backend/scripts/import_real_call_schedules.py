@@ -16,7 +16,6 @@ ALIASES = {
     "SALINAS": "Ricky Salinas",
     "GARCIA": "Jaime Garcia",
     "GUTIERREZ": "Clarissa Gutierrez",
-    "CASTRO": "Tim Castro",
 }
 
 FEB_2026: Dict[int, Tuple[str, str]] = {
@@ -32,9 +31,9 @@ FEB_2026: Dict[int, Tuple[str, str]] = {
     10: ("D. REQUENEZ", "GARCIA"),
     11: ("E. REQUENEZ", "GUTIERREZ"),
     12: ("GORENA", "LOZANO"),
-    13: ("SALINAS", "CASTRO"),
-    14: ("CASTRO", "SALINAS"),
-    15: ("SALINAS", "CASTRO"),
+    13: ("SALINAS", "GARCIA"),
+    14: ("GARCIA", "SALINAS"),
+    15: ("SALINAS", "GARCIA"),
     16: ("GARCIA", "D. REQUENEZ"),
     17: ("E. REQUENEZ", "GUTIERREZ"),
     18: ("LOZANO", "GORENA"),

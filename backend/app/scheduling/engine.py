@@ -10,6 +10,7 @@ class StaffMember:
     name: str
     pedi_qualified: bool
     cv_qualified: bool
+    active: bool = True
 
 
 @dataclass(frozen=True)
@@ -122,8 +123,23 @@ def _generate_call_schedule(mds: List[StaffMember], start_date: date, end_date: 
         if role == "first":
             stats[md_id]["last_first"] = current_date
 
+    def _days_since(last_date: date | None, current_date: date) -> int:
+        if not last_date:
+            return 365
+        return (current_date - last_date).days
+
     def choose_pair(current_date: date) -> Tuple[int, int]:
-        candidates = sorted(md_ids, key=lambda mid: (stats[mid]["total"], stats[mid]["first"]))
+        # Balance call burden while preferring staff who have had more rest,
+        # with extra weight against repeated first-call burden.
+        candidates = sorted(
+            md_ids,
+            key=lambda mid: (
+                stats[mid]["total"],
+                stats[mid]["first"],
+                -_days_since(stats[mid]["last_call"], current_date),
+                -_days_since(stats[mid]["last_first"], current_date),
+            ),
+        )
         for first_id in candidates:
             if not can_call(first_id, current_date, "first"):
                 continue
@@ -156,59 +172,73 @@ def _generate_call_schedule(mds: List[StaffMember], start_date: date, end_date: 
                 return first_id, second_id
         raise ValueError("No available staff meet weekend call constraints")
 
-    weekend_groups = _weekend_groups(start_date, end_date)
+    pending_thursday_assignments: Dict[date, Tuple[int, int]] = {}
+    weekend_index = -1
 
-    for index, (fri, sat, sun) in enumerate(weekend_groups):
-        md_a, md_b = choose_weekend_pair(index)
-
+    def choose_weekend_pattern(md_a: int, md_b: int, fri: date, sat: date, sun: date) -> Dict[str, int] | None:
         pattern_options = [
             {"fri_first": md_a, "sat_first": md_b, "sun_first": md_a, "thu_first": md_a, "thu_second": md_b},
             {"fri_first": md_b, "sat_first": md_a, "sun_first": md_b, "thu_first": md_b, "thu_second": md_a},
         ]
 
-        selected = None
         for pattern in pattern_options:
-            if not can_call(pattern["fri_first"], fri, "first"):
-                continue
-            if not can_call(pattern["sat_first"], sat, "first"):
-                continue
-            if not can_call(pattern["sun_first"], sun, "first"):
-                continue
-            selected = pattern
-            break
+            feasible = True
+            for day, first_id in ((fri, pattern["fri_first"]), (sat, pattern["sat_first"]), (sun, pattern["sun_first"])):
+                second_id = md_b if first_id == md_a else md_a
 
-        if not selected:
-            raise ValueError("No available staff meet weekend pattern constraints")
+                if first_id not in cv_ids and second_id not in cv_ids:
+                    feasible = False
+                    break
 
-        weekend_days = [(fri, selected["fri_first"], md_b if selected["fri_first"] == md_a else md_a)]
-        weekend_days.append((sat, selected["sat_first"], md_b if selected["sat_first"] == md_a else md_a))
-        weekend_days.append((sun, selected["sun_first"], md_b if selected["sun_first"] == md_a else md_a))
-
-        for day, first_id, second_id in weekend_days:
-            call_assignments[day] = {"first_call_md_id": first_id, "second_call_md_id": second_id}
-            assign(first_id, day, "first")
-            assign(second_id, day, "second")
-
-        stats[md_a]["last_weekend"] = index
-        stats[md_b]["last_weekend"] = index
-        stats[md_a]["weekend_count"] += 1
-        stats[md_b]["weekend_count"] += 1
-
-        next_thursday = sun + timedelta(days=4)
-        if next_thursday <= end_date:
-            first_id = selected["thu_first"]
-            second_id = selected["thu_second"]
-            if can_call(first_id, next_thursday, "first") and can_call(second_id, next_thursday, "second"):
-                call_assignments[next_thursday] = {
-                    "first_call_md_id": first_id,
-                    "second_call_md_id": second_id,
-                }
-                assign(first_id, next_thursday, "first")
-                assign(second_id, next_thursday, "second")
+            if feasible:
+                return pattern
+        return None
 
     for current_date in _daterange(start_date, end_date):
         if current_date in call_assignments:
             continue
+
+        if current_date.weekday() == 4 and current_date + timedelta(days=2) <= end_date:
+            weekend_index += 1
+            fri, sat, sun = current_date, current_date + timedelta(days=1), current_date + timedelta(days=2)
+            md_a, md_b = choose_weekend_pair(weekend_index)
+            selected = choose_weekend_pattern(md_a, md_b, fri, sat, sun)
+            if not selected:
+                raise ValueError("No available staff meet weekend pattern constraints")
+
+            weekend_days = [
+                (fri, selected["fri_first"], md_b if selected["fri_first"] == md_a else md_a),
+                (sat, selected["sat_first"], md_b if selected["sat_first"] == md_a else md_a),
+                (sun, selected["sun_first"], md_b if selected["sun_first"] == md_a else md_a),
+            ]
+            for day, first_id, second_id in weekend_days:
+                call_assignments[day] = {"first_call_md_id": first_id, "second_call_md_id": second_id}
+                assign(first_id, day, "first")
+                assign(second_id, day, "second")
+
+            stats[md_a]["last_weekend"] = weekend_index
+            stats[md_b]["last_weekend"] = weekend_index
+            stats[md_a]["weekend_count"] += 1
+            stats[md_b]["weekend_count"] += 1
+
+            next_thursday = sun + timedelta(days=4)
+            if next_thursday <= end_date:
+                pending_thursday_assignments[next_thursday] = (selected["thu_first"], selected["thu_second"])
+            continue
+
+        if current_date in pending_thursday_assignments:
+            first_id, second_id = pending_thursday_assignments[current_date]
+            if (
+                first_id != second_id
+                and can_call(first_id, current_date, "first")
+                and can_call(second_id, current_date, "second")
+                and (first_id in cv_ids or second_id in cv_ids)
+            ):
+                call_assignments[current_date] = {"first_call_md_id": first_id, "second_call_md_id": second_id}
+                assign(first_id, current_date, "first")
+                assign(second_id, current_date, "second")
+                continue
+
         first_id, second_id = choose_pair(current_date)
         call_assignments[current_date] = {"first_call_md_id": first_id, "second_call_md_id": second_id}
         assign(first_id, current_date, "first")
@@ -223,7 +253,7 @@ def generate_monthly_schedule(
     start_date: date,
     limits: WeeklyLimits = WeeklyLimits(),
 ) -> List[Dict[str, Any]]:
-    md_staff = [StaffMember(**md) for md in mds]
+    md_staff = [StaffMember(**md) for md in mds if md.get("active", True)]
     if not md_staff:
         raise ValueError("At least one MD is required")
 

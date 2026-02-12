@@ -4,15 +4,16 @@ from app.scheduling.engine import WeeklyLimits, generate_monthly_schedule
 
 def build_staff():
     mds = [
-        {"id": 1, "name": "Edward Requenez", "pedi_qualified": True, "cv_qualified": True},
-        {"id": 2, "name": "Daniel Requenez", "pedi_qualified": True, "cv_qualified": True},
-        {"id": 3, "name": "Ricky Salinas", "pedi_qualified": True, "cv_qualified": False},
-        {"id": 4, "name": "Erika Schwegler", "pedi_qualified": True, "cv_qualified": True},
-        {"id": 5, "name": "Mike Gorena", "pedi_qualified": True, "cv_qualified": True},
-        {"id": 6, "name": "Jaime Garcia", "pedi_qualified": False, "cv_qualified": True},
-        {"id": 7, "name": "Clarissa Gutierrez", "pedi_qualified": False, "cv_qualified": True},
-        {"id": 8, "name": "Maria Lozano", "pedi_qualified": True, "cv_qualified": False},
-        {"id": 10, "name": "MD Extra", "pedi_qualified": False, "cv_qualified": False},
+        {"id": 1, "name": "Edward Requenez", "pedi_qualified": True, "cv_qualified": True, "active": True},
+        {"id": 2, "name": "Daniel Requenez", "pedi_qualified": True, "cv_qualified": True, "active": True},
+        {"id": 3, "name": "Ricky Salinas", "pedi_qualified": True, "cv_qualified": False, "active": True},
+        {"id": 4, "name": "Erika Schwegler", "pedi_qualified": True, "cv_qualified": True, "active": True},
+        {"id": 5, "name": "Mike Gorena", "pedi_qualified": True, "cv_qualified": True, "active": True},
+        {"id": 6, "name": "Jaime Garcia", "pedi_qualified": False, "cv_qualified": True, "active": True},
+        {"id": 7, "name": "Clarissa Gutierrez", "pedi_qualified": False, "cv_qualified": True, "active": True},
+        {"id": 8, "name": "Maria Lozano", "pedi_qualified": True, "cv_qualified": False, "active": True},
+        {"id": 9, "name": "Tim Castro", "pedi_qualified": False, "cv_qualified": False, "active": False},
+        {"id": 10, "name": "MD Extra", "pedi_qualified": False, "cv_qualified": False, "active": True},
     ]
     return mds, []
 
@@ -84,3 +85,28 @@ def test_call_constraints():
                 weekend_assignments[md_id] += 1
     assert weekend_assignments[1] <= 1
     assert weekend_assignments[2] <= 1
+
+
+def test_weekend_pair_stays_same_for_fri_sat_sun():
+    mds, crnas = build_staff()
+    schedules = generate_monthly_schedule(mds, crnas, date(2026, 3, 1), limits=WeeklyLimits(max_on_call=7, max_surgical=7))
+    by_date = {entry["date"]: entry["call_assignments"] for entry in schedules}
+
+    for day, calls in sorted(by_date.items()):
+        if day.weekday() != 4:
+            continue
+        saturday = day + timedelta(days=1)
+        sunday = day + timedelta(days=2)
+        if saturday not in by_date or sunday not in by_date:
+            continue
+        friday_pair = {calls["first_call_md_id"], calls["second_call_md_id"]}
+        saturday_pair = {by_date[saturday]["first_call_md_id"], by_date[saturday]["second_call_md_id"]}
+        sunday_pair = {by_date[sunday]["first_call_md_id"], by_date[sunday]["second_call_md_id"]}
+        assert friday_pair == saturday_pair == sunday_pair
+
+
+def test_inactive_md_is_not_assigned_to_call():
+    mds, crnas = build_staff()
+    schedules = generate_monthly_schedule(mds, crnas, date(2026, 3, 1), limits=WeeklyLimits(max_on_call=7, max_surgical=7))
+    assigned_ids = {md_id for entry in schedules for md_id in entry["md_ids"]}
+    assert 9 not in assigned_ids
