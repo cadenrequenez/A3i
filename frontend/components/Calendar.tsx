@@ -15,8 +15,16 @@ type CalendarProps = {
   onSelectDate: (date: string) => void;
 };
 
-function toLocalDateString(value: Date) {
-  return value.toLocaleDateString("en-CA");
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function buildMonthDays(currentDate: Date) {
@@ -32,7 +40,7 @@ function buildMonthDays(currentDate: Date) {
 }
 
 export default function Calendar({ schedules, view, selectedDate, onSelectDate }: CalendarProps) {
-  const currentDate = new Date(selectedDate);
+  const currentDate = parseIsoDate(selectedDate);
   const { days: monthDays, leadingEmptyCells } = useMemo(() => buildMonthDays(currentDate), [currentDate]);
 
   if (view === "day") {
@@ -72,41 +80,41 @@ export default function Calendar({ schedules, view, selectedDate, onSelectDate }
           <div key={`empty-${index}`} className="rounded-lg border border-transparent p-2" />
         ))}
         {monthDays.map((day) => {
-        const iso = toLocalDateString(day);
-        const daySchedules = schedules.filter((s) => s.date === iso);
-        const rioEntry = daySchedules.find((s) => s.facility === "Rio Grande Regional Hospital");
-        return (
-          <button
-            key={iso}
-            onClick={() => onSelectDate(iso)}
-            className={`rounded-lg border p-2 text-left text-sm transition ${
-              iso === selectedDate
-                ? "border-sky-900 bg-white shadow-lg shadow-sky-800/10"
-                : "border-slate-200 bg-white/85 hover:bg-white"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">{day.getDate()}</span>
-              <span className="text-xs text-slate-400">{day.toLocaleDateString(undefined, { weekday: "short" })}</span>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {daySchedules.map((entry) => (
-                <span
-                  key={`${entry.facility}-${entry.date}`}
-                  className={`h-2 w-2 rounded-full ${facilityColors[entry.facility] || "bg-slate-400"}`}
-                  title={entry.facility}
-                />
-              ))}
-            </div>
-            {rioEntry && (
-              <div className="mt-2 space-y-1 text-[11px] text-slate-600">
-                <div>1st: {rioEntry.callFirstName || "TBD"}</div>
-                <div>2nd: {rioEntry.callSecondName || "TBD"}</div>
+          const iso = formatIsoDate(day);
+          const daySchedules = schedules.filter((s) => s.date === iso);
+          const rioEntry = daySchedules.find((s) => s.facility === "Rio Grande Regional Hospital");
+          return (
+            <button
+              key={iso}
+              onClick={() => onSelectDate(iso)}
+              className={`rounded-lg border p-2 text-left text-sm transition ${
+                iso === selectedDate
+                  ? "border-sky-900 bg-white shadow-lg shadow-sky-800/10"
+                  : "border-slate-200 bg-white/85 hover:bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">{day.getDate()}</span>
+                <span className="text-xs text-slate-400">{day.toLocaleDateString(undefined, { weekday: "short" })}</span>
               </div>
-            )}
-          </button>
-        );
-      })}
+              <div className="mt-2 flex flex-wrap gap-1">
+                {daySchedules.map((entry) => (
+                  <span
+                    key={`${entry.facility}-${entry.date}`}
+                    className={`h-2 w-2 rounded-full ${facilityColors[entry.facility] || "bg-slate-400"}`}
+                    title={entry.facility}
+                  />
+                ))}
+              </div>
+              {rioEntry && (
+                <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                  <div>1st: {rioEntry.callFirstName || "TBD"}</div>
+                  <div>2nd: {rioEntry.callSecondName || "TBD"}</div>
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

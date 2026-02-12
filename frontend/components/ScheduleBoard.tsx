@@ -13,8 +13,20 @@ import { getRole, getToken } from "../lib/auth";
 
 const RIO_FACILITY = "Rio Grande Regional Hospital";
 
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function ScheduleBoard() {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = formatIsoDate(new Date());
   const [view, setView] = useState<"month" | "day">("month");
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
@@ -101,10 +113,10 @@ export default function ScheduleBoard() {
   }, [selectedDate, hydratedSchedules]);
 
   const shiftMonth = (delta: number) => {
-    const current = new Date(`${selectedDate}T00:00:00`);
+    const current = parseIsoDate(selectedDate);
     current.setMonth(current.getMonth() + delta);
     current.setDate(1);
-    const nextDate = current.toISOString().slice(0, 10);
+    const nextDate = formatIsoDate(current);
     setSelectedDate(nextDate);
     setMonth(Number(nextDate.slice(5, 7)));
     setYear(Number(nextDate.slice(0, 4)));
@@ -136,9 +148,9 @@ export default function ScheduleBoard() {
   };
 
   const postCallName = useMemo(() => {
-    const currentDate = new Date(selectedDate);
+    const currentDate = parseIsoDate(selectedDate);
     currentDate.setDate(currentDate.getDate() - 1);
-    const priorDate = currentDate.toISOString().slice(0, 10);
+    const priorDate = formatIsoDate(currentDate);
     const priorEntry = hydratedSchedules.find((entry) => entry.date === priorDate);
     const postCallId = priorEntry?.callAssignments?.first_call_md_id;
     if (!postCallId) {
