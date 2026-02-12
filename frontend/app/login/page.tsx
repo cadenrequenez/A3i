@@ -37,14 +37,19 @@ export default function LoginPage() {
     }
 
     let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
+    let abortTimer: ReturnType<typeof setTimeout> | undefined;
     try {
+      const controller = new AbortController();
       slowHintTimer = setTimeout(() => setSlowLoginHint(true), 4000);
+      abortTimer = setTimeout(() => controller.abort(), 15000);
       const response = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword })
+        body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword }),
+        signal: controller.signal
       });
       clearTimeout(slowHintTimer);
+      clearTimeout(abortTimer);
       if (!response.ok) {
         throw new Error("Invalid credentials");
       }
@@ -60,10 +65,16 @@ export default function LoginPage() {
       document.cookie = `a3i_role=${payload.role || "read-only"}; path=/`;
       router.push("/");
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).name === "AbortError"
+        ? "Login timed out. Please try again in a moment."
+        : (err as Error).message || "Load failed";
+      setError(message);
     } finally {
       if (slowHintTimer) {
         clearTimeout(slowHintTimer);
+      }
+      if (abortTimer) {
+        clearTimeout(abortTimer);
       }
       setIsSubmitting(false);
     }
