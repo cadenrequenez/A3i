@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app import crud, models, schemas
 from app.core.deps import get_db, get_current_user, oauth2_scheme
 from app.core.security import create_access_token, verify_password
@@ -25,8 +26,15 @@ def login(
 def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.username == data.username).first()
     if existing:
-        raise HTTPException(status_code=400, detail="User already exists")
-    return crud.create_user(db, data)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
+    try:
+        return crud.create_user(db, data)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already exists",
+        ) from exc
 
 
 @router.post("/logout")
