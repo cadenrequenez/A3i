@@ -15,6 +15,7 @@ from app.scheduling.rules import (
 )
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
+EXCLUDED_SUGGESTION_MD_NAMES = {"tim castro"}
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -102,9 +103,15 @@ def _load_assignments(
 
 
 def _md_lookups(db: Session) -> tuple[dict[int, str], set[int]]:
-    md_rows = db.query(models.MD).all()
+    md_rows = db.query(models.MD).filter(models.MD.active.is_(True)).all()
     md_name_lookup = {row.id: row.name for row in md_rows}
     cv_qualified_ids = {row.id for row in md_rows if row.cv_qualified}
+    md_name_lookup = {
+        md_id: name
+        for md_id, name in md_name_lookup.items()
+        if name.strip().lower() not in EXCLUDED_SUGGESTION_MD_NAMES
+    }
+    cv_qualified_ids = {md_id for md_id in cv_qualified_ids if md_id in md_name_lookup}
     return md_name_lookup, cv_qualified_ids
 
 
