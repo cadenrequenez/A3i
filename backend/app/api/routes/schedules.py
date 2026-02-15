@@ -262,6 +262,48 @@ def _build_fallback_suggestions(
     return deduped
 
 
+def _build_suggestion_impact(
+    *,
+    suggestion_changes: list[schemas.AISuggestionChange],
+    baseline_score_data: dict,
+    candidate_score_data: dict,
+    md_name_lookup: dict[int, str],
+    actual_delta: float,
+) -> tuple[str, str]:
+    touched_md_ids: set[int] = set()
+    for change in suggestion_changes:
+        touched_md_ids.add(change.set_first_call_md_id)
+        touched_md_ids.add(change.set_second_call_md_id)
+
+    before_rows = {item["md_id"]: item for item in baseline_score_data.get("per_md", [])}
+    after_rows = {item["md_id"]: item for item in candidate_score_data.get("per_md", [])}
+
+    parts: list[str] = []
+    for md_id in sorted(touched_md_ids):
+        before = before_rows.get(md_id)
+        after = after_rows.get(md_id)
+        if not before or not after:
+            continue
+        total_delta = after["total_call"] - before["total_call"]
+        first_delta = after["first_call_count"] - before["first_call_count"]
+        weekend_delta = after["weekend_count"] - before["weekend_count"]
+        parts.append(
+            f'{md_name_lookup.get(md_id, str(md_id))}: total {before["total_call"]}->{after["total_call"]} '
+            f"({total_delta:+d}), first {before['first_call_count']}->{after['first_call_count']} "
+            f"({first_delta:+d}), weekends {before['weekend_count']}->{after['weekend_count']} "
+            f"({weekend_delta:+d})"
+        )
+
+    why = (
+        "This suggestion is shown because it does not add any rule violations and "
+        f"improves fairness by {actual_delta:.3f}."
+        if actual_delta > 0
+        else "This suggestion is shown because it removes rule violations without adding new ones."
+    )
+    impact_summary = " | ".join(parts) if parts else "No MD impact details available."
+    return why, impact_summary
+
+
 @router.post("/", response_model=schemas.ScheduleOut)
 def create_schedule(
     data: schemas.ScheduleCreate,
@@ -538,11 +580,21 @@ def ai_suggest_fixes_route(
         if actual_delta <= 0 and not violations_fixed:
             continue
 
+        why, impact_summary = _build_suggestion_impact(
+            suggestion_changes=draft.changes,
+            baseline_score_data=baseline_score_data,
+            candidate_score_data=candidate_score_data,
+            md_name_lookup=md_name_lookup,
+            actual_delta=actual_delta,
+        )
+
         validated_suggestions.append(
             schemas.AISuggestedFixOut(
                 title=draft.title,
                 changes=draft.changes,
                 rationale=draft.rationale,
+                why=why,
+                impact_summary=impact_summary,
                 expected_fairness_delta=draft.expected_fairness_delta,
                 actual_fairness_delta=actual_delta,
                 violations_fixed=violations_fixed,

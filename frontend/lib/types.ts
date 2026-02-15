@@ -37,6 +37,8 @@ export type AIFixSuggestion = {
   title: string;
   changes: AISuggestionChange[];
   rationale: string;
+  why?: string;
+  impact_summary?: string;
   expected_fairness_delta: number;
   actual_fairness_delta: number;
   violations_fixed: string[];

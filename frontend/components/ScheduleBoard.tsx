@@ -340,6 +340,12 @@ export default function ScheduleBoard() {
               <div key={`${item.title}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
                 <p className="font-semibold">{item.title}</p>
                 <p className="text-slate-600">{item.rationale}</p>
+                {item.why && <p className="mt-1 text-xs text-slate-600">{item.why}</p>}
+                {item.impact_summary && (
+                  <p className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Impact:</span> {item.impact_summary}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-slate-500">
                   Expected delta: {item.expected_fairness_delta.toFixed(3)} | Actual delta: {item.actual_fairness_delta.toFixed(3)}
                 </p>

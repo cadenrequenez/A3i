@@ -196,6 +196,8 @@ class AISuggestedFixOut(BaseModel):
     title: str
     changes: List[AISuggestionChange]
     rationale: str
+    why: str = ""
+    impact_summary: str = ""
     expected_fairness_delta: float
     actual_fairness_delta: float
     violations_fixed: List[str] = []
