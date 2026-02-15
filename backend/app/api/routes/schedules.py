@@ -57,6 +57,12 @@ def _build_ruleset() -> ScheduleRuleset:
     )
 
 
+def _fairness_badness(summary: schemas.ScheduleScoreSummary) -> float:
+    # Lower is better: tighter spread means fairer distribution.
+    score_range = summary.max - summary.min
+    return round(summary.stdev_score + (score_range * 0.25), 6)
+
+
 def _load_assignments(
     db: Session,
     *,
@@ -331,12 +337,29 @@ def ai_suggest_fixes_route(
 
     validated_suggestions: list[schemas.AISuggestedFixOut] = []
     baseline_violation_codes = {item.code for item in baseline_violations_raw}
-    baseline_mean = baseline_score.mean_score
+    baseline_badness = _fairness_badness(baseline_score)
+    base_by_date = {item["date"]: item for item in base_assignments}
 
     for draft in drafts:
+        proposed_changes = [change.model_dump(mode="json") for change in draft.changes]
+        has_real_change = False
+        for change in proposed_changes:
+            current = base_by_date.get(change["date"])
+            if not current:
+                has_real_change = True
+                break
+            if (
+                current.get("first_call_md_id") != change["set_first_call_md_id"]
+                or current.get("second_call_md_id") != change["set_second_call_md_id"]
+            ):
+                has_real_change = True
+                break
+        if not has_real_change:
+            continue
+
         candidate = apply_suggestion_changes(
             base_assignments,
-            [change.model_dump(mode="json") for change in draft.changes],
+            proposed_changes,
         )
         candidate_violations_raw = validate_schedule(
             candidate,
@@ -353,7 +376,14 @@ def ai_suggest_fixes_route(
 
         candidate_score_data = score_schedule(candidate, ruleset=ruleset, md_name_lookup=md_name_lookup)
         candidate_summary = schemas.ScheduleScoreSummary.model_validate(candidate_score_data["summary"])
-        actual_delta = round(baseline_mean - candidate_summary.mean_score, 4)
+        candidate_badness = _fairness_badness(candidate_summary)
+        actual_delta = round(baseline_badness - candidate_badness, 4)
+
+        violations_fixed = sorted(list(baseline_violation_codes - candidate_violation_codes))
+        # Keep only meaningful suggestions: must improve fairness or fix at least one violation.
+        if actual_delta <= 0 and not violations_fixed:
+            continue
+
         validated_suggestions.append(
             schemas.AISuggestedFixOut(
                 title=draft.title,
@@ -361,7 +391,7 @@ def ai_suggest_fixes_route(
                 rationale=draft.rationale,
                 expected_fairness_delta=draft.expected_fairness_delta,
                 actual_fairness_delta=actual_delta,
-                violations_fixed=sorted(list(baseline_violation_codes - candidate_violation_codes)),
+                violations_fixed=violations_fixed,
                 violations_added=violations_added,
                 remaining_violations=_serialize_violations(candidate_violations_raw),
             )
