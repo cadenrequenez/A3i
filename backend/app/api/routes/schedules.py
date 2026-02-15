@@ -108,6 +108,153 @@ def _md_lookups(db: Session) -> tuple[dict[int, str], set[int]]:
     return md_name_lookup, cv_qualified_ids
 
 
+def _build_fallback_suggestions(
+    *,
+    base_assignments: list[dict],
+    ruleset: ScheduleRuleset,
+    cv_qualified_ids: set[int],
+    md_name_lookup: dict[int, str],
+    range_start: date,
+    range_end: date,
+    baseline_violation_codes: set[str],
+    baseline_badness: float,
+    max_suggestions: int,
+) -> list[schemas.AISuggestedFixOut]:
+    md_ids = sorted(md_name_lookup.keys())
+    base_by_date = {item["date"]: item for item in base_assignments}
+    fridays = [item["date"] for item in base_assignments if item["date"].weekday() == 4]
+    candidates: list[tuple[float, schemas.AISuggestedFixOut]] = []
+
+    def evaluate_changes(title: str, rationale: str, raw_changes: list[dict]) -> None:
+        candidate = apply_suggestion_changes(base_assignments, raw_changes)
+        violations = validate_schedule(
+            candidate,
+            ruleset=ruleset,
+            cv_qualified_md_ids=cv_qualified_ids,
+            expected_start_date=range_start,
+            expected_end_date=range_end,
+            md_name_lookup=md_name_lookup,
+        )
+        candidate_violation_codes = {item.code for item in violations}
+        violations_added = sorted(list(candidate_violation_codes - baseline_violation_codes))
+        if violations_added:
+            return
+
+        candidate_score_data = score_schedule(candidate, ruleset=ruleset, md_name_lookup=md_name_lookup)
+        candidate_summary = schemas.ScheduleScoreSummary.model_validate(candidate_score_data["summary"])
+        actual_delta = round(baseline_badness - _fairness_badness(candidate_summary), 4)
+        violations_fixed = sorted(list(baseline_violation_codes - candidate_violation_codes))
+        if actual_delta <= 0 and not violations_fixed:
+            return
+
+        suggestion = schemas.AISuggestedFixOut(
+            title=title,
+            changes=[schemas.AISuggestionChange.model_validate(change) for change in raw_changes],
+            rationale=rationale,
+            expected_fairness_delta=actual_delta,
+            actual_fairness_delta=actual_delta,
+            violations_fixed=violations_fixed,
+            violations_added=violations_added,
+            remaining_violations=_serialize_violations(violations),
+        )
+        candidates.append((actual_delta, suggestion))
+
+    # 1) Single-day replacements.
+    for item in base_assignments:
+        current_date = item["date"]
+        first = item.get("first_call_md_id")
+        second = item.get("second_call_md_id")
+        if not first or not second:
+            continue
+        if current_date.weekday() in (4, 5, 6):
+            continue
+        for replacement in md_ids:
+            if replacement in (first, second):
+                continue
+            evaluate_changes(
+                title=f"Balance weekday load on {current_date.isoformat()}",
+                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
+                raw_changes=[
+                    {
+                        "date": current_date,
+                        "set_first_call_md_id": replacement,
+                        "set_second_call_md_id": second,
+                    }
+                ],
+            )
+            evaluate_changes(
+                title=f"Balance weekday load on {current_date.isoformat()}",
+                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
+                raw_changes=[
+                    {
+                        "date": current_date,
+                        "set_first_call_md_id": first,
+                        "set_second_call_md_id": replacement,
+                    }
+                ],
+            )
+
+    # 2) Weekend-block replacements (Fri/Sat/Sun together) to preserve continuity.
+    for friday in fridays:
+        saturday = friday + timedelta(days=1)
+        sunday = friday + timedelta(days=2)
+        fri = base_by_date.get(friday)
+        sat = base_by_date.get(saturday)
+        sun = base_by_date.get(sunday)
+        if not fri or not sat or not sun:
+            continue
+        weekend_ids = {
+            fri.get("first_call_md_id"),
+            fri.get("second_call_md_id"),
+            sat.get("first_call_md_id"),
+            sat.get("second_call_md_id"),
+            sun.get("first_call_md_id"),
+            sun.get("second_call_md_id"),
+        }
+        weekend_ids.discard(None)
+        if len(weekend_ids) != 2:
+            continue
+        weekend_pair = sorted(list(weekend_ids))
+        a_id, b_id = weekend_pair[0], weekend_pair[1]
+        for replacement in md_ids:
+            if replacement in weekend_pair:
+                continue
+            evaluate_changes(
+                title=f"Rebalance weekend block starting {friday.isoformat()}",
+                rationale="Replace one weekend-pair member across Fri/Sat/Sun to improve fairness without breaking weekend continuity.",
+                raw_changes=[
+                    {"date": friday, "set_first_call_md_id": replacement, "set_second_call_md_id": b_id},
+                    {"date": saturday, "set_first_call_md_id": b_id, "set_second_call_md_id": replacement},
+                    {"date": sunday, "set_first_call_md_id": replacement, "set_second_call_md_id": b_id},
+                ],
+            )
+            evaluate_changes(
+                title=f"Rebalance weekend block starting {friday.isoformat()}",
+                rationale="Replace one weekend-pair member across Fri/Sat/Sun to improve fairness without breaking weekend continuity.",
+                raw_changes=[
+                    {"date": friday, "set_first_call_md_id": a_id, "set_second_call_md_id": replacement},
+                    {"date": saturday, "set_first_call_md_id": replacement, "set_second_call_md_id": a_id},
+                    {"date": sunday, "set_first_call_md_id": a_id, "set_second_call_md_id": replacement},
+                ],
+            )
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    deduped: list[schemas.AISuggestedFixOut] = []
+    seen = set()
+    for _delta, suggestion in candidates:
+        key = tuple(
+            (change.date.isoformat(), change.set_first_call_md_id, change.set_second_call_md_id)
+            for change in suggestion.changes
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(suggestion)
+        if len(deduped) >= max_suggestions:
+            break
+    return deduped
+
+
 @router.post("/", response_model=schemas.ScheduleOut)
 def create_schedule(
     data: schemas.ScheduleCreate,
@@ -399,6 +546,21 @@ def ai_suggest_fixes_route(
         if len(validated_suggestions) >= max(1, min(data.max_suggestions, 3)):
             break
 
+    used_fallback_generator = False
+    if not validated_suggestions:
+        used_fallback_generator = True
+        validated_suggestions = _build_fallback_suggestions(
+            base_assignments=base_assignments,
+            ruleset=ruleset,
+            cv_qualified_ids=cv_qualified_ids,
+            md_name_lookup=md_name_lookup,
+            range_start=range_start,
+            range_end=range_end,
+            baseline_violation_codes=baseline_violation_codes,
+            baseline_badness=baseline_badness,
+            max_suggestions=max(1, min(data.max_suggestions, 3)),
+        )
+
     log_ai_suggestion_event(
         {
             "user": user.username,
@@ -413,6 +575,7 @@ def ai_suggest_fixes_route(
             "draft_titles": [item.title for item in drafts],
             "returned_count": len(validated_suggestions),
             "returned_titles": [item.title for item in validated_suggestions],
+            "used_fallback_generator": used_fallback_generator,
         }
     )
 
