@@ -2,10 +2,104 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import crud, models, schemas
+from app.core.ai import request_schedule_suggestions
+from app.core.audit import log_ai_suggestion_event
+from app.core.config import settings
 from app.core.deps import get_current_admin, get_db, get_current_user
 from app.scheduling.engine import WeeklyLimits, generate_monthly_schedule
+from app.scheduling.rules import (
+    ScheduleRuleset,
+    apply_suggestion_changes,
+    score_schedule,
+    validate_schedule,
+)
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    start_date = date(year, month, 1)
+    end_date = (start_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    return start_date, end_date
+
+
+def _resolve_range(
+    year: int | None,
+    month: int | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[date, date]:
+    if year and month:
+        return _month_bounds(year, month)
+    if start_date and end_date:
+        return start_date, end_date
+    raise HTTPException(status_code=400, detail="Provide year/month or start_date/end_date")
+
+
+def _serialize_violations(violations) -> list[schemas.ScheduleViolationOut]:
+    return [
+        schemas.ScheduleViolationOut(
+            code=item.code,
+            message=item.message,
+            date=item.date,
+            people=item.people,
+            severity=item.severity,
+        )
+        for item in violations
+    ]
+
+
+def _build_ruleset() -> ScheduleRuleset:
+    return ScheduleRuleset(
+        score_weight_first_call=settings.score_weight_first_call,
+        score_weight_second_call=settings.score_weight_second_call,
+        score_weight_weekend=settings.score_weight_weekend,
+    )
+
+
+def _load_assignments(
+    db: Session,
+    *,
+    facility_id: int | None,
+    range_start: date,
+    range_end: date,
+    payload_schedule: list[schemas.ScheduleAssignment] | None = None,
+) -> list[dict]:
+    if payload_schedule:
+        return [
+            {
+                "date": item.date,
+                "first_call_md_id": item.first_call_md_id,
+                "second_call_md_id": item.second_call_md_id,
+            }
+            for item in payload_schedule
+        ]
+
+    query = db.query(models.Schedule).filter(
+        models.Schedule.date >= range_start,
+        models.Schedule.date <= range_end,
+    )
+    if facility_id is not None:
+        query = query.filter(models.Schedule.facility_id == facility_id)
+
+    assignments: list[dict] = []
+    for row in query.order_by(models.Schedule.date.asc()).all():
+        call_data = row.call_assignments or {}
+        assignments.append(
+            {
+                "date": row.date,
+                "first_call_md_id": call_data.get("first_call_md_id", call_data.get("first_call")),
+                "second_call_md_id": call_data.get("second_call_md_id", call_data.get("second_call")),
+            }
+        )
+    return assignments
+
+
+def _md_lookups(db: Session) -> tuple[dict[int, str], set[int]]:
+    md_rows = db.query(models.MD).all()
+    md_name_lookup = {row.id: row.name for row in md_rows}
+    cv_qualified_ids = {row.id for row in md_rows if row.cv_qualified}
+    return md_name_lookup, cv_qualified_ids
 
 
 @router.post("/", response_model=schemas.ScheduleOut)
@@ -65,8 +159,7 @@ def generate_schedule(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    start_date = date(data.year, data.month, 1)
-    end_date = (start_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    start_date, end_date = _month_bounds(data.year, data.month)
 
     facilities = db.query(models.Facility).all()
     facility_lookup = {facility.site_name: facility.id for facility in facilities}
@@ -137,4 +230,157 @@ def generate_schedule(
         created=created,
         start_date=start_date,
         end_date=end_date,
+    )
+
+
+@router.post("/validate", response_model=schemas.ScheduleValidationResponse)
+def validate_schedule_route(
+    data: schemas.ScheduleValidationRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    range_start, range_end = _resolve_range(data.year, data.month, data.start_date, data.end_date)
+    md_name_lookup, cv_qualified_ids = _md_lookups(db)
+    assignments = _load_assignments(
+        db,
+        facility_id=data.facility_id,
+        range_start=range_start,
+        range_end=range_end,
+        payload_schedule=data.schedule,
+    )
+    violations = validate_schedule(
+        assignments,
+        ruleset=_build_ruleset(),
+        cv_qualified_md_ids=cv_qualified_ids,
+        expected_start_date=range_start,
+        expected_end_date=range_end,
+        md_name_lookup=md_name_lookup,
+    )
+    serialized = _serialize_violations(violations)
+    return schemas.ScheduleValidationResponse(ok=not serialized, violations=serialized)
+
+
+@router.post("/score", response_model=schemas.ScheduleScoreResponse)
+def score_schedule_route(
+    data: schemas.ScheduleScoreRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    range_start, range_end = _resolve_range(data.year, data.month, data.start_date, data.end_date)
+    md_name_lookup, _cv_qualified_ids = _md_lookups(db)
+    assignments = _load_assignments(
+        db,
+        facility_id=data.facility_id,
+        range_start=range_start,
+        range_end=range_end,
+        payload_schedule=data.schedule,
+    )
+    score_data = score_schedule(
+        assignments,
+        ruleset=_build_ruleset(),
+        md_name_lookup=md_name_lookup,
+    )
+    return schemas.ScheduleScoreResponse.model_validate(score_data)
+
+
+@router.post("/ai-suggest-fixes", response_model=schemas.AISuggestFixesResponse)
+def ai_suggest_fixes_route(
+    data: schemas.AISuggestFixesRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_admin),
+):
+    range_start, range_end = _resolve_range(data.year, data.month, None, None)
+    md_name_lookup, cv_qualified_ids = _md_lookups(db)
+    base_assignments = _load_assignments(
+        db,
+        facility_id=data.facility_id,
+        range_start=range_start,
+        range_end=range_end,
+    )
+
+    ruleset = _build_ruleset()
+    baseline_violations_raw = validate_schedule(
+        base_assignments,
+        ruleset=ruleset,
+        cv_qualified_md_ids=cv_qualified_ids,
+        expected_start_date=range_start,
+        expected_end_date=range_end,
+        md_name_lookup=md_name_lookup,
+    )
+    baseline_violations = _serialize_violations(baseline_violations_raw)
+    baseline_score_data = score_schedule(base_assignments, ruleset=ruleset, md_name_lookup=md_name_lookup)
+    baseline_score = schemas.ScheduleScoreSummary.model_validate(baseline_score_data["summary"])
+
+    ai_input = {
+        "facility_id": data.facility_id,
+        "year": data.year,
+        "month": data.month,
+        "focus_weekend_date": data.focus_weekend_date,
+        "baseline_violations": [item.model_dump(mode="json") for item in baseline_violations],
+        "baseline_score": baseline_score.model_dump(mode="json"),
+        "schedule": base_assignments,
+        "mds": [{"id": key, "name": value, "cv_qualified": key in cv_qualified_ids} for key, value in md_name_lookup.items()],
+    }
+    drafts = request_schedule_suggestions(model_input=ai_input, max_suggestions=max(1, min(data.max_suggestions, 3)))
+
+    validated_suggestions: list[schemas.AISuggestedFixOut] = []
+    baseline_violation_codes = {item.code for item in baseline_violations_raw}
+    baseline_mean = baseline_score.mean_score
+
+    for draft in drafts:
+        candidate = apply_suggestion_changes(
+            base_assignments,
+            [change.model_dump(mode="json") for change in draft.changes],
+        )
+        candidate_violations_raw = validate_schedule(
+            candidate,
+            ruleset=ruleset,
+            cv_qualified_md_ids=cv_qualified_ids,
+            expected_start_date=range_start,
+            expected_end_date=range_end,
+            md_name_lookup=md_name_lookup,
+        )
+        if candidate_violations_raw:
+            continue
+
+        candidate_score_data = score_schedule(candidate, ruleset=ruleset, md_name_lookup=md_name_lookup)
+        candidate_summary = schemas.ScheduleScoreSummary.model_validate(candidate_score_data["summary"])
+        actual_delta = round(baseline_mean - candidate_summary.mean_score, 4)
+        candidate_violation_codes = {item.code for item in candidate_violations_raw}
+        validated_suggestions.append(
+            schemas.AISuggestedFixOut(
+                title=draft.title,
+                changes=draft.changes,
+                rationale=draft.rationale,
+                expected_fairness_delta=draft.expected_fairness_delta,
+                actual_fairness_delta=actual_delta,
+                violations_fixed=sorted(list(baseline_violation_codes - candidate_violation_codes)),
+                violations_added=sorted(list(candidate_violation_codes - baseline_violation_codes)),
+                remaining_violations=_serialize_violations(candidate_violations_raw),
+            )
+        )
+        if len(validated_suggestions) >= max(1, min(data.max_suggestions, 3)):
+            break
+
+    log_ai_suggestion_event(
+        {
+            "user": user.username,
+            "facility_id": data.facility_id,
+            "year": data.year,
+            "month": data.month,
+            "focus_weekend_date": data.focus_weekend_date,
+            "model": settings.openai_model,
+            "requested_max_suggestions": data.max_suggestions,
+            "baseline_violation_count": len(baseline_violations),
+            "draft_count": len(drafts),
+            "draft_titles": [item.title for item in drafts],
+            "returned_count": len(validated_suggestions),
+            "returned_titles": [item.title for item in validated_suggestions],
+        }
+    )
+
+    return schemas.AISuggestFixesResponse(
+        suggestions=validated_suggestions,
+        baseline_violations=baseline_violations,
+        baseline_score=baseline_score,
     )

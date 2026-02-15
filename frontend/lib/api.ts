@@ -1,4 +1,4 @@
-import type { Facility, ScheduleEntry, StaffMember } from "./types";
+import type { AIFixSuggestionsResponse, Facility, ScheduleEntry, StaffMember } from "./types";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -96,6 +96,28 @@ export async function generateSchedule(
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || "Failed to generate schedule");
+  }
+  return response.json();
+}
+
+export async function suggestScheduleFixes(
+  facilityId: number,
+  year: number,
+  month: number,
+  token?: string
+): Promise<AIFixSuggestionsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/schedules/ai-suggest-fixes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ facility_id: facilityId, year, month, max_suggestions: 3 })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to suggest fixes");
   }
   return response.json();
 }

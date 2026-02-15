@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     jwt_exp_minutes: int = int(os.getenv("JWT_EXP_MINUTES", "120"))
     cors_origins: str = os.getenv("CORS_ORIGINS", "*")
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    score_weight_first_call: float = float(os.getenv("SCORE_WEIGHT_FIRST_CALL", "1.25"))
+    score_weight_second_call: float = float(os.getenv("SCORE_WEIGHT_SECOND_CALL", "1.0"))
+    score_weight_weekend: float = float(os.getenv("SCORE_WEIGHT_WEEKEND", "2.0"))
 
 
 settings = Settings()

@@ -108,6 +108,107 @@ class ScheduleGenerateResponse(BaseModel):
     end_date: date
 
 
+class ScheduleAssignment(BaseModel):
+    date: date
+    first_call_md_id: int | None = None
+    second_call_md_id: int | None = None
+
+
+class ScheduleViolationOut(BaseModel):
+    code: str
+    message: str
+    date: Optional[date] = None
+    people: List[str] = []
+    severity: str
+
+
+class ScheduleValidationRequest(BaseModel):
+    facility_id: Optional[int] = None
+    year: Optional[int] = None
+    month: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    schedule: Optional[List[ScheduleAssignment]] = None
+
+
+class ScheduleValidationResponse(BaseModel):
+    ok: bool
+    violations: List[ScheduleViolationOut]
+
+
+class ScheduleScoreMdRow(BaseModel):
+    md_id: int
+    name: str
+    first_call_count: int
+    second_call_count: int
+    weekend_count: int
+    total_call: int
+    score: float
+
+
+class ScheduleScoreSummary(BaseModel):
+    mean_score: float
+    stdev_score: float
+    min: float
+    max: float
+
+
+class ScheduleScoreResponse(BaseModel):
+    per_md: List[ScheduleScoreMdRow]
+    summary: ScheduleScoreSummary
+
+
+class ScheduleScoreRequest(BaseModel):
+    facility_id: Optional[int] = None
+    year: Optional[int] = None
+    month: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    schedule: Optional[List[ScheduleAssignment]] = None
+
+
+class AISuggestionChange(BaseModel):
+    date: date
+    set_first_call_md_id: int
+    set_second_call_md_id: int
+
+
+class AISuggestedFixDraft(BaseModel):
+    title: str
+    changes: List[AISuggestionChange]
+    rationale: str
+    expected_fairness_delta: float
+
+
+class AISuggestFixesRawResponse(BaseModel):
+    suggestions: List[AISuggestedFixDraft] = []
+
+
+class AISuggestFixesRequest(BaseModel):
+    facility_id: int
+    year: int
+    month: int
+    focus_weekend_date: Optional[date] = None
+    max_suggestions: int = 3
+
+
+class AISuggestedFixOut(BaseModel):
+    title: str
+    changes: List[AISuggestionChange]
+    rationale: str
+    expected_fairness_delta: float
+    actual_fairness_delta: float
+    violations_fixed: List[str] = []
+    violations_added: List[str] = []
+    remaining_violations: List[ScheduleViolationOut] = []
+
+
+class AISuggestFixesResponse(BaseModel):
+    suggestions: List[AISuggestedFixOut]
+    baseline_violations: List[ScheduleViolationOut]
+    baseline_score: ScheduleScoreSummary
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

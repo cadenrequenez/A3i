@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Calendar from "./Calendar";
-import type { ScheduleEntry } from "../lib/types";
+import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
 import {
+  fetchFacilities,
   fetchMds,
   fetchSchedules,
   generateSchedule,
+  suggestScheduleFixes,
   updateSchedule
 } from "../lib/api";
 import { getRole, getToken } from "../lib/auth";
@@ -39,6 +41,9 @@ export default function ScheduleBoard() {
   const [editCallFirst, setEditCallFirst] = useState<number | null>(null);
   const [editCallSecond, setEditCallSecond] = useState<number | null>(null);
   const [isGeneratingYear, setIsGeneratingYear] = useState(false);
+  const [rioFacilityId, setRioFacilityId] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<AIFixSuggestion[]>([]);
+  const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
 
   const loadSchedules = () => {
     const token = getToken();
@@ -69,13 +74,15 @@ export default function ScheduleBoard() {
   useEffect(() => {
     setRole(getRole());
     const token = getToken();
-    Promise.all([fetchMds(token)])
-      .then(([mds]) => {
+    Promise.all([fetchMds(token), fetchFacilities(token)])
+      .then(([mds, facilities]) => {
         const mdLookup: Record<number, string> = {};
         mds.forEach((md) => {
           mdLookup[md.id] = md.name;
         });
         setMdMap(mdLookup);
+        const rioFacility = facilities.find((item) => item.site_name === RIO_FACILITY);
+        setRioFacilityId(rioFacility?.id ?? null);
       })
       .finally(() => {
         loadSchedules();
@@ -295,10 +302,63 @@ export default function ScheduleBoard() {
           >
             {isGeneratingYear ? "Generating Year..." : "Generate Full Year"}
           </button>
+          <button
+            className="rounded-full bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+            disabled={role !== "admin" || !rioFacilityId}
+            onClick={async () => {
+              setSuggestionStatus("Requesting AI suggestions...");
+              try {
+                if (!rioFacilityId) {
+                  throw new Error("Rio facility not found");
+                }
+                const result = await suggestScheduleFixes(rioFacilityId, year, month, getToken() || undefined);
+                setSuggestions(result.suggestions);
+                setSuggestionStatus(
+                  result.suggestions.length
+                    ? `Found ${result.suggestions.length} validated suggestions.`
+                    : "No valid suggestions returned."
+                );
+              } catch (error) {
+                setSuggestionStatus((error as Error).message || "Failed to load suggestions.");
+              }
+            }}
+          >
+            Suggest fixes
+          </button>
           {role !== "admin" && <span className="text-xs text-slate-500">Admin only</span>}
         </div>
         {status && <p className="mt-2 text-sm text-slate-600">{status}</p>}
+        {suggestionStatus && <p className="mt-1 text-sm text-slate-600">{suggestionStatus}</p>}
       </div>
+
+      {suggestions.length > 0 && (
+        <div className="surface-card rounded-xl p-4">
+          <h3 className="text-lg font-semibold">AI Suggestions Preview</h3>
+          <p className="mt-1 text-sm text-slate-600">Preview only. Suggestions are not saved automatically.</p>
+          <div className="mt-3 space-y-3">
+            {suggestions.map((item, index) => (
+              <div key={`${item.title}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                <p className="font-semibold">{item.title}</p>
+                <p className="text-slate-600">{item.rationale}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Expected delta: {item.expected_fairness_delta.toFixed(3)} | Actual delta: {item.actual_fairness_delta.toFixed(3)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Fixed: {item.violations_fixed.join(", ") || "none"} | Added: {item.violations_added.join(", ") || "none"}
+                </p>
+                <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
+                  {item.changes.map((change) => (
+                    <li key={`${change.date}-${change.set_first_call_md_id}-${change.set_second_call_md_id}`}>
+                      {change.date}: 1st {mdMap[change.set_first_call_md_id] || change.set_first_call_md_id}, 2nd{" "}
+                      {mdMap[change.set_second_call_md_id] || change.set_second_call_md_id}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="surface-card rounded-xl p-4 text-sm text-slate-700">
         <p className="font-semibold">Quick steps</p>
