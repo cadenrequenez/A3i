@@ -289,6 +289,12 @@ def ai_suggest_fixes_route(
     db: Session = Depends(get_db),
     user=Depends(get_current_admin),
 ):
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OPENAI_API_KEY is not configured on backend",
+        )
+
     range_start, range_end = _resolve_range(data.year, data.month, None, None)
     md_name_lookup, cv_qualified_ids = _md_lookups(db)
     base_assignments = _load_assignments(
@@ -340,13 +346,14 @@ def ai_suggest_fixes_route(
             expected_end_date=range_end,
             md_name_lookup=md_name_lookup,
         )
-        if candidate_violations_raw:
+        candidate_violation_codes = {item.code for item in candidate_violations_raw}
+        violations_added = sorted(list(candidate_violation_codes - baseline_violation_codes))
+        if violations_added:
             continue
 
         candidate_score_data = score_schedule(candidate, ruleset=ruleset, md_name_lookup=md_name_lookup)
         candidate_summary = schemas.ScheduleScoreSummary.model_validate(candidate_score_data["summary"])
         actual_delta = round(baseline_mean - candidate_summary.mean_score, 4)
-        candidate_violation_codes = {item.code for item in candidate_violations_raw}
         validated_suggestions.append(
             schemas.AISuggestedFixOut(
                 title=draft.title,
@@ -355,7 +362,7 @@ def ai_suggest_fixes_route(
                 expected_fairness_delta=draft.expected_fairness_delta,
                 actual_fairness_delta=actual_delta,
                 violations_fixed=sorted(list(baseline_violation_codes - candidate_violation_codes)),
-                violations_added=sorted(list(candidate_violation_codes - baseline_violation_codes)),
+                violations_added=violations_added,
                 remaining_violations=_serialize_violations(candidate_violations_raw),
             )
         )
