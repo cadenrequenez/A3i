@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
 
 export default function LoginPage() {
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function LoginPage() {
     } catch (err) {
       const message = (err as Error).name === "AbortError"
         ? "Login timed out. Please try again in a moment."
-        : (err as Error).message || "Load failed";
+        : (err as Error).message || "Login request failed. Check frontend API URL settings.";
       setError(message);
     } finally {
       if (slowHintTimer) {
