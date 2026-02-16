@@ -16,6 +16,7 @@ from app.scheduling.rules import (
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 EXCLUDED_SUGGESTION_MD_NAMES = {"tim castro"}
+WEEKEND_CAP_MD_NAMES = {"edward requenez", "ed requenez", "daniel requenez", "dan requenez"}
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -115,6 +116,144 @@ def _md_lookups(db: Session) -> tuple[dict[int, str], set[int]]:
     return md_name_lookup, cv_qualified_ids
 
 
+def _normalized_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def _is_weekend_cap_md(name: str) -> bool:
+    return _normalized_name(name) in WEEKEND_CAP_MD_NAMES
+
+
+def _weekend_counts(assignments: list[dict]) -> dict[int, int]:
+    by_date = {item["date"]: item for item in assignments}
+    counts: dict[int, int] = {}
+    for item in assignments:
+        current_date = item["date"]
+        if current_date.weekday() != 4:
+            continue
+        sat = by_date.get(current_date + timedelta(days=1))
+        sun = by_date.get(current_date + timedelta(days=2))
+        if not sat or not sun:
+            continue
+        weekend_ids = {
+            item.get("first_call_md_id"),
+            item.get("second_call_md_id"),
+            sat.get("first_call_md_id"),
+            sat.get("second_call_md_id"),
+            sun.get("first_call_md_id"),
+            sun.get("second_call_md_id"),
+        }
+        weekend_ids.discard(None)
+        for md_id in weekend_ids:
+            counts[md_id] = counts.get(md_id, 0) + 1
+    return counts
+
+
+def _back_to_back_first_call_counts(assignments: list[dict]) -> dict[int, int]:
+    rows = sorted(assignments, key=lambda item: item["date"])
+    counts: dict[int, int] = {}
+    prev_first = None
+    prev_date = None
+    for row in rows:
+        current_date = row["date"]
+        current_first = row.get("first_call_md_id")
+        if (
+            current_first is not None
+            and prev_first == current_first
+            and prev_date is not None
+            and (current_date - prev_date).days == 1
+        ):
+            counts[current_first] = counts.get(current_first, 0) + 1
+        prev_first = current_first
+        prev_date = current_date
+    return counts
+
+
+def _passes_candidate_hard_constraints(
+    *,
+    candidate_assignments: list[dict],
+    baseline_back_to_back: dict[int, int],
+    md_name_lookup: dict[int, str],
+) -> bool:
+    weekend_counts = _weekend_counts(candidate_assignments)
+    for md_id, count in weekend_counts.items():
+        if _is_weekend_cap_md(md_name_lookup.get(md_id, "")) and count > 1:
+            return False
+
+    candidate_back_to_back = _back_to_back_first_call_counts(candidate_assignments)
+    for md_id, value in candidate_back_to_back.items():
+        if value > baseline_back_to_back.get(md_id, 0):
+            return False
+    return True
+
+
+def _select_final_suggestions(
+    suggestions: list[schemas.AISuggestedFixOut],
+    max_suggestions: int,
+) -> list[schemas.AISuggestedFixOut]:
+    if not suggestions:
+        return []
+
+    def sort_key(item: schemas.AISuggestedFixOut):
+        is_weekend = any(change.date.weekday() in (4, 5, 6) for change in item.changes)
+        return (0 if is_weekend else 1, -item.actual_fairness_delta)
+
+    ordered = sorted(suggestions, key=sort_key)
+    selected: list[schemas.AISuggestedFixOut] = []
+    used_dates: set[date] = set()
+    md_target_counts: dict[int, int] = {}
+    seen_change_keys: set[tuple] = set()
+
+    def can_take(item: schemas.AISuggestedFixOut, enforce_md_diversity: bool) -> bool:
+        change_key = tuple(
+            (change.date.isoformat(), change.set_first_call_md_id, change.set_second_call_md_id)
+            for change in item.changes
+        )
+        if change_key in seen_change_keys:
+            return False
+        if any(change.date in used_dates for change in item.changes):
+            return False
+        if enforce_md_diversity:
+            touched = set()
+            for change in item.changes:
+                touched.add(change.set_first_call_md_id)
+                touched.add(change.set_second_call_md_id)
+            if any(md_target_counts.get(md_id, 0) >= 1 for md_id in touched):
+                return False
+        return True
+
+    # Pass 1: prefer diverse MD targets.
+    for item in ordered:
+        if len(selected) >= max_suggestions:
+            break
+        if not can_take(item, enforce_md_diversity=True):
+            continue
+        selected.append(item)
+        for change in item.changes:
+            used_dates.add(change.date)
+            md_target_counts[change.set_first_call_md_id] = md_target_counts.get(change.set_first_call_md_id, 0) + 1
+            md_target_counts[change.set_second_call_md_id] = md_target_counts.get(change.set_second_call_md_id, 0) + 1
+        seen_change_keys.add(
+            tuple((change.date.isoformat(), change.set_first_call_md_id, change.set_second_call_md_id) for change in item.changes)
+        )
+
+    # Pass 2: fill remaining slots without diversity constraint.
+    if len(selected) < max_suggestions:
+        for item in ordered:
+            if len(selected) >= max_suggestions:
+                break
+            if not can_take(item, enforce_md_diversity=False):
+                continue
+            selected.append(item)
+            for change in item.changes:
+                used_dates.add(change.date)
+            seen_change_keys.add(
+                tuple((change.date.isoformat(), change.set_first_call_md_id, change.set_second_call_md_id) for change in item.changes)
+            )
+
+    return selected
+
+
 def _build_fallback_suggestions(
     *,
     base_assignments: list[dict],
@@ -125,15 +264,24 @@ def _build_fallback_suggestions(
     range_end: date,
     baseline_violation_codes: set[str],
     baseline_badness: float,
+    baseline_score_data: dict,
     max_suggestions: int,
 ) -> list[schemas.AISuggestedFixOut]:
     md_ids = sorted(md_name_lookup.keys())
     base_by_date = {item["date"]: item for item in base_assignments}
     fridays = [item["date"] for item in base_assignments if item["date"].weekday() == 4]
     candidates: list[tuple[float, schemas.AISuggestedFixOut]] = []
+    baseline_back_to_back = _back_to_back_first_call_counts(base_assignments)
 
     def evaluate_changes(title: str, rationale: str, raw_changes: list[dict]) -> None:
         candidate = apply_suggestion_changes(base_assignments, raw_changes)
+        if not _passes_candidate_hard_constraints(
+            candidate_assignments=candidate,
+            baseline_back_to_back=baseline_back_to_back,
+            md_name_lookup=md_name_lookup,
+        ):
+            return
+
         violations = validate_schedule(
             candidate,
             ruleset=ruleset,
@@ -154,10 +302,21 @@ def _build_fallback_suggestions(
         if actual_delta <= 0 and not violations_fixed:
             return
 
+        suggestion_changes = [schemas.AISuggestionChange.model_validate(change) for change in raw_changes]
+        why, impact_summary = _build_suggestion_impact(
+            suggestion_changes=suggestion_changes,
+            baseline_score_data=baseline_score_data,
+            candidate_score_data=candidate_score_data,
+            md_name_lookup=md_name_lookup,
+            actual_delta=actual_delta,
+        )
+
         suggestion = schemas.AISuggestedFixOut(
             title=title,
-            changes=[schemas.AISuggestionChange.model_validate(change) for change in raw_changes],
+            changes=suggestion_changes,
             rationale=rationale,
+            why=why,
+            impact_summary=impact_summary,
             expected_fairness_delta=actual_delta,
             actual_fairness_delta=actual_delta,
             violations_fixed=violations_fixed,
@@ -166,42 +325,7 @@ def _build_fallback_suggestions(
         )
         candidates.append((actual_delta, suggestion))
 
-    # 1) Single-day replacements.
-    for item in base_assignments:
-        current_date = item["date"]
-        first = item.get("first_call_md_id")
-        second = item.get("second_call_md_id")
-        if not first or not second:
-            continue
-        if current_date.weekday() in (4, 5, 6):
-            continue
-        for replacement in md_ids:
-            if replacement in (first, second):
-                continue
-            evaluate_changes(
-                title=f"Balance weekday load on {current_date.isoformat()}",
-                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
-                raw_changes=[
-                    {
-                        "date": current_date,
-                        "set_first_call_md_id": replacement,
-                        "set_second_call_md_id": second,
-                    }
-                ],
-            )
-            evaluate_changes(
-                title=f"Balance weekday load on {current_date.isoformat()}",
-                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
-                raw_changes=[
-                    {
-                        "date": current_date,
-                        "set_first_call_md_id": first,
-                        "set_second_call_md_id": replacement,
-                    }
-                ],
-            )
-
-    # 2) Weekend-block replacements (Fri/Sat/Sun together) to preserve continuity.
+    # 1) Weekend-block replacements (Fri/Sat/Sun together) to preserve continuity.
     for friday in fridays:
         saturday = friday + timedelta(days=1)
         sunday = friday + timedelta(days=2)
@@ -245,21 +369,43 @@ def _build_fallback_suggestions(
                 ],
             )
 
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    deduped: list[schemas.AISuggestedFixOut] = []
-    seen = set()
-    for _delta, suggestion in candidates:
-        key = tuple(
-            (change.date.isoformat(), change.set_first_call_md_id, change.set_second_call_md_id)
-            for change in suggestion.changes
-        )
-        if key in seen:
+    # 2) Single-day replacements.
+    for item in base_assignments:
+        current_date = item["date"]
+        first = item.get("first_call_md_id")
+        second = item.get("second_call_md_id")
+        if not first or not second:
             continue
-        seen.add(key)
-        deduped.append(suggestion)
-        if len(deduped) >= max_suggestions:
-            break
-    return deduped
+        if current_date.weekday() in (4, 5, 6):
+            continue
+        for replacement in md_ids:
+            if replacement in (first, second):
+                continue
+            evaluate_changes(
+                title=f"Balance weekday load on {current_date.isoformat()}",
+                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
+                raw_changes=[
+                    {
+                        "date": current_date,
+                        "set_first_call_md_id": replacement,
+                        "set_second_call_md_id": second,
+                    }
+                ],
+            )
+            evaluate_changes(
+                title=f"Balance weekday load on {current_date.isoformat()}",
+                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
+                raw_changes=[
+                    {
+                        "date": current_date,
+                        "set_first_call_md_id": first,
+                        "set_second_call_md_id": replacement,
+                    }
+                ],
+            )
+
+    ranked = [item[1] for item in sorted(candidates, key=lambda item: item[0], reverse=True)]
+    return _select_final_suggestions(ranked, max_suggestions=max_suggestions)
 
 
 def _build_suggestion_impact(
@@ -535,6 +681,7 @@ def ai_suggest_fixes_route(
     baseline_violation_codes = {item.code for item in baseline_violations_raw}
     baseline_badness = _fairness_badness(baseline_score)
     base_by_date = {item["date"]: item for item in base_assignments}
+    baseline_back_to_back = _back_to_back_first_call_counts(base_assignments)
 
     for draft in drafts:
         proposed_changes = [change.model_dump(mode="json") for change in draft.changes]
@@ -557,6 +704,13 @@ def ai_suggest_fixes_route(
             base_assignments,
             proposed_changes,
         )
+        if not _passes_candidate_hard_constraints(
+            candidate_assignments=candidate,
+            baseline_back_to_back=baseline_back_to_back,
+            md_name_lookup=md_name_lookup,
+        ):
+            continue
+
         candidate_violations_raw = validate_schedule(
             candidate,
             ruleset=ruleset,
@@ -602,8 +756,11 @@ def ai_suggest_fixes_route(
                 remaining_violations=_serialize_violations(candidate_violations_raw),
             )
         )
-        if len(validated_suggestions) >= max(1, min(data.max_suggestions, 3)):
-            break
+
+    validated_suggestions = _select_final_suggestions(
+        validated_suggestions,
+        max_suggestions=max(1, min(data.max_suggestions, 3)),
+    )
 
     used_fallback_generator = False
     if not validated_suggestions:
@@ -617,6 +774,7 @@ def ai_suggest_fixes_route(
             range_end=range_end,
             baseline_violation_codes=baseline_violation_codes,
             baseline_badness=baseline_badness,
+            baseline_score_data=baseline_score_data,
             max_suggestions=max(1, min(data.max_suggestions, 3)),
         )
 
