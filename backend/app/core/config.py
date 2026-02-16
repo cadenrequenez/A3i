@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     score_weight_first_call: float = float(os.getenv("SCORE_WEIGHT_FIRST_CALL", "1.25"))
     score_weight_second_call: float = float(os.getenv("SCORE_WEIGHT_SECOND_CALL", "1.0"))
     score_weight_weekend: float = float(os.getenv("SCORE_WEIGHT_WEEKEND", "2.0"))
+    score_penalty_back_to_back_first: float = float(os.getenv("SCORE_PENALTY_BACK_TO_BACK_FIRST", "4.0"))
+    score_penalty_back_to_back_weekend: float = float(os.getenv("SCORE_PENALTY_BACK_TO_BACK_WEEKEND", "4.0"))
 
 
 settings = Settings()

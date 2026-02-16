@@ -142,6 +142,8 @@ class ScheduleScoreMdRow(BaseModel):
     first_call_count: int
     second_call_count: int
     weekend_count: int
+    back_to_back_first_count: int
+    back_to_back_weekend_count: int
     total_call: int
     score: float
 

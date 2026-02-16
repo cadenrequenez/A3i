@@ -44,6 +44,7 @@ export default function ScheduleBoard() {
   const [rioFacilityId, setRioFacilityId] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<AIFixSuggestion[]>([]);
   const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
+  const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
 
   const loadSchedules = () => {
     const token = getToken();
@@ -360,6 +361,43 @@ export default function ScheduleBoard() {
                     </li>
                   ))}
                 </ul>
+                {role === "admin" && (
+                  <button
+                    className="mt-3 rounded bg-slate-900 px-3 py-1 text-xs text-white disabled:opacity-50"
+                    disabled={applyingSuggestionIndex === index}
+                    onClick={async () => {
+                      setApplyingSuggestionIndex(index);
+                      setSuggestionStatus(null);
+                      try {
+                        const token = getToken() || undefined;
+                        for (const change of item.changes) {
+                          const target = hydratedSchedules.find((entry) => entry.date === change.date && entry.id);
+                          if (!target?.id) {
+                            throw new Error(`Missing schedule row for ${change.date}`);
+                          }
+                          await updateSchedule(
+                            target.id,
+                            {
+                              callAssignments: {
+                                first_call_md_id: change.set_first_call_md_id,
+                                second_call_md_id: change.set_second_call_md_id
+                              }
+                            },
+                            token
+                          );
+                        }
+                        await loadSchedules();
+                        setSuggestionStatus("Suggestion applied. Schedule updated.");
+                      } catch (error) {
+                        setSuggestionStatus((error as Error).message || "Failed to apply suggestion.");
+                      } finally {
+                        setApplyingSuggestionIndex(null);
+                      }
+                    }}
+                  >
+                    {applyingSuggestionIndex === index ? "Applying..." : "Apply suggestion"}
+                  </button>
+                )}
               </div>
             ))}
           </div>

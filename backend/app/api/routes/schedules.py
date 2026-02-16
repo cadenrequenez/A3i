@@ -56,6 +56,8 @@ def _build_ruleset() -> ScheduleRuleset:
         score_weight_first_call=settings.score_weight_first_call,
         score_weight_second_call=settings.score_weight_second_call,
         score_weight_weekend=settings.score_weight_weekend,
+        score_penalty_back_to_back_first=settings.score_penalty_back_to_back_first,
+        score_penalty_back_to_back_weekend=settings.score_penalty_back_to_back_weekend,
     )
 
 
@@ -254,6 +256,25 @@ def _select_final_suggestions(
     return selected
 
 
+def _is_valid_weekend_block_change_set(changes: list[dict]) -> bool:
+    if not changes:
+        return False
+    grouped: dict[date, list[dict]] = {}
+    for change in changes:
+        grouped.setdefault(change["date"], []).append(change)
+    if any(len(items) != 1 for items in grouped.values()):
+        return False
+
+    dates = sorted(grouped.keys())
+    if len(dates) != 3:
+        return False
+    if dates[0].weekday() != 4:
+        return False
+    if (dates[1] - dates[0]).days != 1 or (dates[2] - dates[1]).days != 1:
+        return False
+    return True
+
+
 def _build_fallback_suggestions(
     *,
     base_assignments: list[dict],
@@ -366,41 +387,6 @@ def _build_fallback_suggestions(
                     {"date": friday, "set_first_call_md_id": a_id, "set_second_call_md_id": replacement},
                     {"date": saturday, "set_first_call_md_id": replacement, "set_second_call_md_id": a_id},
                     {"date": sunday, "set_first_call_md_id": a_id, "set_second_call_md_id": replacement},
-                ],
-            )
-
-    # 2) Single-day replacements.
-    for item in base_assignments:
-        current_date = item["date"]
-        first = item.get("first_call_md_id")
-        second = item.get("second_call_md_id")
-        if not first or not second:
-            continue
-        if current_date.weekday() in (4, 5, 6):
-            continue
-        for replacement in md_ids:
-            if replacement in (first, second):
-                continue
-            evaluate_changes(
-                title=f"Balance weekday load on {current_date.isoformat()}",
-                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
-                raw_changes=[
-                    {
-                        "date": current_date,
-                        "set_first_call_md_id": replacement,
-                        "set_second_call_md_id": second,
-                    }
-                ],
-            )
-            evaluate_changes(
-                title=f"Balance weekday load on {current_date.isoformat()}",
-                rationale="Replace one high-burden slot with another qualified MD to reduce fairness spread.",
-                raw_changes=[
-                    {
-                        "date": current_date,
-                        "set_first_call_md_id": first,
-                        "set_second_call_md_id": replacement,
-                    }
                 ],
             )
 
@@ -685,6 +671,8 @@ def ai_suggest_fixes_route(
 
     for draft in drafts:
         proposed_changes = [change.model_dump(mode="json") for change in draft.changes]
+        if not _is_valid_weekend_block_change_set(proposed_changes):
+            continue
         has_real_change = False
         for change in proposed_changes:
             current = base_by_date.get(change["date"])

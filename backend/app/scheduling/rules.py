@@ -13,6 +13,8 @@ class ScheduleRuleset:
     score_weight_first_call: float = 1.25
     score_weight_second_call: float = 1.0
     score_weight_weekend: float = 2.0
+    score_penalty_back_to_back_first: float = 4.0
+    score_penalty_back_to_back_weekend: float = 4.0
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,8 @@ def score_schedule(
                 "first_call_count": 0,
                 "second_call_count": 0,
                 "weekend_count": 0,
+                "back_to_back_first_count": 0,
+                "back_to_back_weekend_count": 0,
                 "total_call": 0,
                 "score": 0.0,
             }
@@ -240,6 +244,45 @@ def score_schedule(
             _ensure(md_id)
             stats[md_id]["weekend_count"] += 1
 
+    # Back-to-back first call days.
+    prev_entry = None
+    for entry in normalized:
+        if prev_entry is None:
+            prev_entry = entry
+            continue
+        if (entry.date - prev_entry.date).days == 1 and entry.first_call_md_id is not None and entry.first_call_md_id == prev_entry.first_call_md_id:
+            _ensure(entry.first_call_md_id)
+            stats[entry.first_call_md_id]["back_to_back_first_count"] += 1
+        prev_entry = entry
+
+    # Back-to-back weekends (Friday to next Friday).
+    weekend_pairs: list[tuple[date, set[int]]] = []
+    for entry in normalized:
+        if entry.date.weekday() != 4:
+            continue
+        saturday = by_date.get(entry.date + timedelta(days=1))
+        sunday = by_date.get(entry.date + timedelta(days=2))
+        if not saturday or not sunday:
+            continue
+        weekend_ids = {
+            entry.first_call_md_id,
+            entry.second_call_md_id,
+            saturday.first_call_md_id,
+            saturday.second_call_md_id,
+            sunday.first_call_md_id,
+            sunday.second_call_md_id,
+        }
+        weekend_ids.discard(None)
+        weekend_pairs.append((entry.date, weekend_ids))
+
+    weekend_pairs.sort(key=lambda item: item[0])
+    for idx in range(1, len(weekend_pairs)):
+        prev_ids = weekend_pairs[idx - 1][1]
+        curr_ids = weekend_pairs[idx][1]
+        for md_id in prev_ids & curr_ids:
+            _ensure(md_id)
+            stats[md_id]["back_to_back_weekend_count"] += 1
+
     per_md: list[dict[str, Any]] = []
     for md_id, row in stats.items():
         row["total_call"] = row["first_call_count"] + row["second_call_count"]
@@ -247,6 +290,12 @@ def score_schedule(
             row["first_call_count"] * ruleset.score_weight_first_call
             + row["second_call_count"] * ruleset.score_weight_second_call
             + row["weekend_count"] * ruleset.score_weight_weekend,
+            4,
+        )
+        row["score"] = round(
+            row["score"]
+            + row["back_to_back_first_count"] * ruleset.score_penalty_back_to_back_first
+            + row["back_to_back_weekend_count"] * ruleset.score_penalty_back_to_back_weekend,
             4,
         )
         per_md.append({"md_id": md_id, **row})

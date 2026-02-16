@@ -40,3 +40,5 @@ curl -X POST "https://a3i-backend.onrender.com/api/v1/schedules/ai-suggest-fixes
 - `SCORE_WEIGHT_FIRST_CALL` (default: `1.25`)
 - `SCORE_WEIGHT_SECOND_CALL` (default: `1.0`)
 - `SCORE_WEIGHT_WEEKEND` (default: `2.0`)
+- `SCORE_PENALTY_BACK_TO_BACK_FIRST` (default: `4.0`)
+- `SCORE_PENALTY_BACK_TO_BACK_WEEKEND` (default: `4.0`)
