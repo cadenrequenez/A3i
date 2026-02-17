@@ -164,7 +164,16 @@ def _generate_call_schedule(mds: List[StaffMember], start_date: date, end_date: 
         raise ValueError("No available staff meet call constraints")
 
     def choose_weekend_pair(weekend_index: int) -> Tuple[int, int]:
-        candidates = sorted(md_ids, key=lambda mid: (stats[mid]["weekend_count"], stats[mid]["total"]))
+        # Prefer MDs with zero weekend assignments first so weekend burden
+        # is distributed across the team before repeats.
+        candidates = sorted(
+            md_ids,
+            key=lambda mid: (
+                0 if stats[mid]["weekend_count"] == 0 else 1,
+                stats[mid]["weekend_count"],
+                stats[mid]["total"],
+            ),
+        )
         for first_id in candidates:
             if stats[first_id]["last_weekend"] == weekend_index - 1:
                 continue

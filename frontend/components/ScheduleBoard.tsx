@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Calendar from "./Calendar";
-import type { AIFixSuggestion, ScheduleEntry, ScheduleScoreResponse } from "../lib/types";
+import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
 import {
   fetchFacilities,
   fetchMds,
   fetchSchedules,
   generateSchedule,
-  scoreSchedule,
   suggestScheduleFixes,
   updateSchedule
 } from "../lib/api";
@@ -46,9 +45,6 @@ export default function ScheduleBoard() {
   const [suggestions, setSuggestions] = useState<AIFixSuggestion[]>([]);
   const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
   const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
-  const [scoreData, setScoreData] = useState<ScheduleScoreResponse | null>(null);
-  const [scoreStatus, setScoreStatus] = useState<string | null>(null);
-  const [scoreLoading, setScoreLoading] = useState(false);
 
   const loadSchedules = () => {
     const token = getToken();
@@ -76,22 +72,6 @@ export default function ScheduleBoard() {
       .catch(() => undefined);
   };
 
-  const loadScoreAnalytics = async (targetYear: number = year, targetMonth: number = month) => {
-    if (!rioFacilityId) {
-      return;
-    }
-    setScoreLoading(true);
-    setScoreStatus(null);
-    try {
-      const result = await scoreSchedule(rioFacilityId, targetYear, targetMonth, getToken() || undefined);
-      setScoreData(result);
-    } catch (error) {
-      setScoreStatus((error as Error).message || "Failed to load month analytics.");
-      setScoreData(null);
-    } finally {
-      setScoreLoading(false);
-    }
-  };
 
   useEffect(() => {
     setRole(getRole());
@@ -140,13 +120,6 @@ export default function ScheduleBoard() {
       setEditCallSecond(entry.callAssignments.second_call_md_id ?? null);
     }
   }, [selectedDate, hydratedSchedules]);
-
-  useEffect(() => {
-    if (!rioFacilityId) {
-      return;
-    }
-    loadScoreAnalytics(year, month).catch(() => undefined);
-  }, [rioFacilityId, year, month]);
 
   const shiftMonth = (delta: number) => {
     const current = parseIsoDate(selectedDate);
@@ -313,7 +286,6 @@ export default function ScheduleBoard() {
               try {
                 await generateSchedule(year, month, overwrite, getToken() || undefined);
                 await loadSchedules();
-                await loadScoreAnalytics(year, month);
                 const paddedMonth = String(month).padStart(2, "0");
                 setSelectedDate(`${year}-${paddedMonth}-01`);
                 setView("month");
@@ -432,68 +404,6 @@ export default function ScheduleBoard() {
           </div>
         </div>
       )}
-
-      <div className="surface-card rounded-xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold">Month Analytics</h3>
-            <p className="text-sm text-slate-600">
-              Fairness and call distribution for {year}-{String(month).padStart(2, "0")}.
-            </p>
-          </div>
-          <button
-            className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700"
-            onClick={() => loadScoreAnalytics(year, month)}
-          >
-            Refresh analytics
-          </button>
-        </div>
-        {scoreLoading && <p className="mt-2 text-sm text-slate-500">Loading analytics...</p>}
-        {scoreStatus && <p className="mt-2 text-sm text-rose-600">{scoreStatus}</p>}
-        {scoreData && (
-          <div className="mt-3 space-y-3">
-            <div className="grid gap-2 text-xs text-slate-700 md:grid-cols-4">
-              <div className="rounded border border-slate-200 p-2">Mean score: {scoreData.summary.mean_score.toFixed(3)}</div>
-              <div className="rounded border border-slate-200 p-2">Std dev: {scoreData.summary.stdev_score.toFixed(3)}</div>
-              <div className="rounded border border-slate-200 p-2">Min score: {scoreData.summary.min.toFixed(3)}</div>
-              <div className="rounded border border-slate-200 p-2">Max score: {scoreData.summary.max.toFixed(3)}</div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-100 text-left">
-                    <th className="px-2 py-1">MD</th>
-                    <th className="px-2 py-1">1st Call</th>
-                    <th className="px-2 py-1">2nd Call</th>
-                    <th className="px-2 py-1">Weekends</th>
-                    <th className="px-2 py-1">B2B 1st</th>
-                    <th className="px-2 py-1">B2B Wknd</th>
-                    <th className="px-2 py-1">Total</th>
-                    <th className="px-2 py-1">Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scoreData.per_md
-                    .slice()
-                    .sort((a, b) => b.score - a.score)
-                    .map((row) => (
-                      <tr key={row.md_id} className="border-b border-slate-100">
-                        <td className="px-2 py-1">{row.name}</td>
-                        <td className="px-2 py-1">{row.first_call_count}</td>
-                        <td className="px-2 py-1">{row.second_call_count}</td>
-                        <td className="px-2 py-1">{row.weekend_count}</td>
-                        <td className="px-2 py-1">{row.back_to_back_first_count}</td>
-                        <td className="px-2 py-1">{row.back_to_back_weekend_count}</td>
-                        <td className="px-2 py-1">{row.total_call}</td>
-                        <td className="px-2 py-1 font-semibold">{row.score.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
 
       <div className="surface-card rounded-xl p-4 text-sm text-slate-700">
         <p className="font-semibold">Quick steps</p>

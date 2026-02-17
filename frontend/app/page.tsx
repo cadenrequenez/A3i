@@ -5,6 +5,7 @@ import TabNav from "../components/TabNav";
 import ScheduleBoard from "../components/ScheduleBoard";
 import StaffList from "../components/StaffList";
 import SitesList from "../components/SitesList";
+import AnalyticsPanel from "../components/AnalyticsPanel";
 
 const TABS = ["Schedule", "Staff", "Sites", "Analytics"] as const;
 
@@ -26,12 +27,7 @@ export default function DashboardPage() {
       {activeTab === "Schedule" && <ScheduleBoard />}
       {activeTab === "Staff" && <StaffList />}
       {activeTab === "Sites" && <SitesList />}
-      {activeTab === "Analytics" && (
-        <section className="surface-card rounded-xl p-6">
-          <h2 className="text-lg font-semibold">Analytics</h2>
-          <p className="text-sm text-slate-600">Review staffing utilization and coverage compliance.</p>
-        </section>
-      )}
+      {activeTab === "Analytics" && <AnalyticsPanel />}
     </main>
   );
 }
