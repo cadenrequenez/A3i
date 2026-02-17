@@ -261,7 +261,17 @@ def _is_valid_weekend_block_change_set(changes: list[dict]) -> bool:
         return False
     grouped: dict[date, list[dict]] = {}
     for change in changes:
-        grouped.setdefault(change["date"], []).append(change)
+        raw_date = change.get("date")
+        if isinstance(raw_date, str):
+            try:
+                current_date = date.fromisoformat(raw_date)
+            except ValueError:
+                return False
+        elif isinstance(raw_date, date):
+            current_date = raw_date
+        else:
+            return False
+        grouped.setdefault(current_date, []).append(change)
     if any(len(items) != 1 for items in grouped.values()):
         return False
 
