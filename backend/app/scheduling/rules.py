@@ -104,12 +104,44 @@ def validate_schedule(
     expected_start_date: date | None = None,
     expected_end_date: date | None = None,
     md_name_lookup: dict[int, str] | None = None,
+    md_availability_lookup: dict[int, dict[str, Any]] | None = None,
 ) -> list[ScheduleViolation]:
     normalized = normalize_assignments(assignments)
     violations: list[ScheduleViolation] = []
     by_date = {entry.date: entry for entry in normalized}
     cv_qualified_md_ids = cv_qualified_md_ids or set()
     md_name_lookup = md_name_lookup or {}
+    md_availability_lookup = md_availability_lookup or {}
+
+    vacation_dates_by_md: dict[int, set[date]] = {}
+    vacation_starts_by_md: dict[int, set[date]] = {}
+    for md_id, availability in md_availability_lookup.items():
+        vacations = availability.get("vacations", []) if isinstance(availability, dict) else []
+        day_set: set[date] = set()
+        starts: set[date] = set()
+        for vacation in vacations:
+            if not isinstance(vacation, dict):
+                continue
+            start_raw = vacation.get("start") or vacation.get("date")
+            end_raw = vacation.get("end") or vacation.get("date")
+            try:
+                if not start_raw:
+                    continue
+                start_day = date.fromisoformat(str(start_raw))
+                end_day = date.fromisoformat(str(end_raw)) if end_raw else start_day
+            except ValueError:
+                continue
+            if end_day < start_day:
+                end_day = start_day
+            starts.add(start_day)
+            current = start_day
+            while current <= end_day:
+                day_set.add(current)
+                current += timedelta(days=1)
+        if day_set:
+            vacation_dates_by_md[md_id] = day_set
+        if starts:
+            vacation_starts_by_md[md_id] = starts
 
     if expected_start_date and expected_end_date:
         current = expected_start_date
@@ -153,6 +185,21 @@ def validate_schedule(
                 )
             )
 
+        # Rule 9: do not schedule MD while on vacation.
+        for md_id in (first, second):
+            if md_id is None:
+                continue
+            if entry.date in vacation_dates_by_md.get(md_id, set()):
+                violations.append(
+                    ScheduleViolation(
+                        code="VACATION_CONFLICT",
+                        message="MD is assigned while on vacation",
+                        date=entry.date,
+                        people=[md_name_lookup.get(md_id, str(md_id))],
+                        severity="error",
+                    )
+                )
+
         if ruleset.require_cv_coverage and cv_qualified_md_ids and first not in cv_qualified_md_ids and second not in cv_qualified_md_ids:
             people = [md_name_lookup.get(first, str(first)), md_name_lookup.get(second, str(second))]
             violations.append(
@@ -164,6 +211,30 @@ def validate_schedule(
                     severity="error",
                 )
             )
+
+    # Rule 9: vacation pre-call planning (2 days before vacation starts, except Monday starts).
+    if normalized:
+        by_date_md_pairs = {
+            entry.date: {entry.first_call_md_id, entry.second_call_md_id}
+            for entry in normalized
+        }
+        for md_id, starts in vacation_starts_by_md.items():
+            for start_day in starts:
+                if start_day.weekday() == 0:
+                    continue
+                target_day = start_day - timedelta(days=2)
+                if target_day not in by_date_md_pairs:
+                    continue
+                if md_id not in by_date_md_pairs[target_day]:
+                    violations.append(
+                        ScheduleViolation(
+                            code="VACATION_PRECALL",
+                            message="MD should be on call 2 days before vacation start (except Monday starts)",
+                            date=target_day,
+                            people=[md_name_lookup.get(md_id, str(md_id))],
+                            severity="error",
+                        )
+                    )
 
     # Do not put MDs on back-to-back weekday calls (Mon-Thu).
     prev_entry = None

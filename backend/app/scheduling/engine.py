@@ -53,6 +53,16 @@ def _last_day_of_month(start_date: date) -> date:
     return next_month - timedelta(days=next_month.day)
 
 
+def _generation_window_end(end_date: date) -> date:
+    # Include spillover days so a month-ending Friday/Saturday still follows
+    # Fri/Sat/Sun weekend block logic.
+    if end_date.weekday() == 4:  # Friday
+        return end_date + timedelta(days=2)
+    if end_date.weekday() == 5:  # Saturday
+        return end_date + timedelta(days=1)
+    return end_date
+
+
 def _week_start(current_date: date) -> date:
     return current_date - timedelta(days=current_date.weekday())
 
@@ -262,8 +272,9 @@ def generate_monthly_schedule(
         raise ValueError("At least one CV-qualified MD is required")
 
     end_date = _last_day_of_month(start_date)
+    generation_end = _generation_window_end(end_date)
     schedules: List[Dict[str, Any]] = []
-    call_assignments = _generate_call_schedule(md_staff, start_date, end_date)
+    call_assignments = _generate_call_schedule(md_staff, start_date, generation_end)
 
     current = start_date
     while current <= end_date:

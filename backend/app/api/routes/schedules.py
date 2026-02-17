@@ -105,17 +105,19 @@ def _load_assignments(
     return assignments
 
 
-def _md_lookups(db: Session) -> tuple[dict[int, str], set[int]]:
+def _md_lookups(db: Session) -> tuple[dict[int, str], set[int], dict[int, dict]]:
     md_rows = db.query(models.MD).filter(models.MD.active.is_(True)).all()
     md_name_lookup = {row.id: row.name for row in md_rows}
     cv_qualified_ids = {row.id for row in md_rows if row.cv_qualified}
+    md_availability_lookup = {row.id: (row.availability or {}) for row in md_rows}
     md_name_lookup = {
         md_id: name
         for md_id, name in md_name_lookup.items()
         if name.strip().lower() not in EXCLUDED_SUGGESTION_MD_NAMES
     }
     cv_qualified_ids = {md_id for md_id in cv_qualified_ids if md_id in md_name_lookup}
-    return md_name_lookup, cv_qualified_ids
+    md_availability_lookup = {md_id: md_availability_lookup.get(md_id, {}) for md_id in md_name_lookup}
+    return md_name_lookup, cv_qualified_ids, md_availability_lookup
 
 
 def _normalized_name(name: str) -> str:
@@ -291,6 +293,7 @@ def _build_fallback_suggestions(
     ruleset: ScheduleRuleset,
     cv_qualified_ids: set[int],
     md_name_lookup: dict[int, str],
+    md_availability_lookup: dict[int, dict],
     range_start: date,
     range_end: date,
     baseline_violation_codes: set[str],
@@ -320,6 +323,7 @@ def _build_fallback_suggestions(
             expected_start_date=range_start,
             expected_end_date=range_end,
             md_name_lookup=md_name_lookup,
+            md_availability_lookup=md_availability_lookup,
         )
         candidate_violation_codes = {item.code for item in violations}
         violations_added = sorted(list(candidate_violation_codes - baseline_violation_codes))
@@ -534,6 +538,33 @@ def generate_schedule(
         max_surgical=data.max_surgical or 7,
     )
     generated = generate_monthly_schedule(md_staff, crna_staff, start_date, limits=limits)
+    md_name_lookup, cv_qualified_ids, md_availability_lookup = _md_lookups(db)
+    generated_assignments = [
+        {
+            "date": entry["date"],
+            "first_call_md_id": entry["call_assignments"].get("first_call_md_id"),
+            "second_call_md_id": entry["call_assignments"].get("second_call_md_id"),
+        }
+        for entry in generated
+        if start_date <= entry["date"] <= end_date
+    ]
+    violations = validate_schedule(
+        generated_assignments,
+        ruleset=_build_ruleset(),
+        cv_qualified_md_ids=cv_qualified_ids,
+        expected_start_date=start_date,
+        expected_end_date=end_date,
+        md_name_lookup=md_name_lookup,
+        md_availability_lookup=md_availability_lookup,
+    )
+    if violations:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Generated schedule violates strict rules",
+                "violations": [item.model_dump(mode="json") for item in _serialize_violations(violations)],
+            },
+        )
 
     if data.overwrite:
         db.query(models.Schedule).filter(
@@ -584,7 +615,7 @@ def validate_schedule_route(
     _user=Depends(get_current_user),
 ):
     range_start, range_end = _resolve_range(data.year, data.month, data.start_date, data.end_date)
-    md_name_lookup, cv_qualified_ids = _md_lookups(db)
+    md_name_lookup, cv_qualified_ids, md_availability_lookup = _md_lookups(db)
     assignments = _load_assignments(
         db,
         facility_id=data.facility_id,
@@ -599,6 +630,7 @@ def validate_schedule_route(
         expected_start_date=range_start,
         expected_end_date=range_end,
         md_name_lookup=md_name_lookup,
+        md_availability_lookup=md_availability_lookup,
     )
     serialized = _serialize_violations(violations)
     return schemas.ScheduleValidationResponse(ok=not serialized, violations=serialized)
@@ -611,7 +643,7 @@ def score_schedule_route(
     _user=Depends(get_current_user),
 ):
     range_start, range_end = _resolve_range(data.year, data.month, data.start_date, data.end_date)
-    md_name_lookup, _cv_qualified_ids = _md_lookups(db)
+    md_name_lookup, _cv_qualified_ids, _md_availability_lookup = _md_lookups(db)
     assignments = _load_assignments(
         db,
         facility_id=data.facility_id,
@@ -640,7 +672,7 @@ def ai_suggest_fixes_route(
         )
 
     range_start, range_end = _resolve_range(data.year, data.month, None, None)
-    md_name_lookup, cv_qualified_ids = _md_lookups(db)
+    md_name_lookup, cv_qualified_ids, md_availability_lookup = _md_lookups(db)
     base_assignments = _load_assignments(
         db,
         facility_id=data.facility_id,
@@ -656,6 +688,7 @@ def ai_suggest_fixes_route(
         expected_start_date=range_start,
         expected_end_date=range_end,
         md_name_lookup=md_name_lookup,
+        md_availability_lookup=md_availability_lookup,
     )
     baseline_violations = _serialize_violations(baseline_violations_raw)
     baseline_score_data = score_schedule(base_assignments, ruleset=ruleset, md_name_lookup=md_name_lookup)
@@ -716,6 +749,7 @@ def ai_suggest_fixes_route(
             expected_start_date=range_start,
             expected_end_date=range_end,
             md_name_lookup=md_name_lookup,
+            md_availability_lookup=md_availability_lookup,
         )
         candidate_violation_codes = {item.code for item in candidate_violations_raw}
         violations_added = sorted(list(candidate_violation_codes - baseline_violation_codes))
@@ -768,6 +802,7 @@ def ai_suggest_fixes_route(
             ruleset=ruleset,
             cv_qualified_ids=cv_qualified_ids,
             md_name_lookup=md_name_lookup,
+            md_availability_lookup=md_availability_lookup,
             range_start=range_start,
             range_end=range_end,
             baseline_violation_codes=baseline_violation_codes,

@@ -24,7 +24,16 @@ def request_schedule_suggestions(
     system_prompt = (
         "You are a healthcare scheduling copilot. "
         "Return STRICT JSON only with this top-level key: suggestions. "
-        "Do not include markdown."
+        "Do not include markdown. "
+        "Hard rules: weekend is Fri/Sat/Sun with same two MDs each day and pattern 1-2-1 or 2-1-2; "
+        "no back-to-back weekend assignments for same MD; "
+        "following Thursday must map to prior weekend pattern; "
+        "exactly two MDs per day, no duplicate MD in both slots; "
+        "at least one CV-qualified MD nightly; "
+        "avoid back-to-back weekday calls and every-other-night weekday first call; "
+        "Ed and Dan max one weekend per month; "
+        "never include Tim Castro. "
+        "Suggestions must be weekend-block changes (Fri/Sat/Sun together)."
     )
     user_prompt = (
         "Given the schedule context, propose up to "
