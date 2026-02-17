@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
+const PREFERRED_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
+const API_FALLBACKS = [PREFERRED_API_URL, "https://a3i-backend.onrender.com", "http://127.0.0.1:8000"].filter(Boolean);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function LoginPage() {
   const [slowLoginHint, setSlowLoginHint] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/`, { method: "GET" }).catch(() => undefined);
+    fetch(`${API_FALLBACKS[0]}/`, { method: "GET" }).catch(() => undefined);
   }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -42,14 +43,27 @@ export default function LoginPage() {
       const controller = new AbortController();
       slowHintTimer = setTimeout(() => setSlowLoginHint(true), 4000);
       abortTimer = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(`${API_URL}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword }),
-        signal: controller.signal
-      });
+      let response: Response | null = null;
+      let networkError: Error | null = null;
+      for (const baseUrl of API_FALLBACKS) {
+        try {
+          response = await fetch(`${baseUrl}/api/v1/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword }),
+            signal: controller.signal
+          });
+          networkError = null;
+          break;
+        } catch (error) {
+          networkError = error as Error;
+        }
+      }
       clearTimeout(slowHintTimer);
       clearTimeout(abortTimer);
+      if (!response) {
+        throw networkError || new Error("Unable to reach backend API");
+      }
       if (!response.ok) {
         throw new Error("Invalid credentials");
       }
