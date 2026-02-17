@@ -61,3 +61,27 @@ export type AIFixSuggestionsResponse = {
     max: number;
   };
 };
+
+export type ScoreMdRow = {
+  md_id: number;
+  name: string;
+  first_call_count: number;
+  second_call_count: number;
+  weekend_count: number;
+  back_to_back_first_count: number;
+  back_to_back_weekend_count: number;
+  total_call: number;
+  score: number;
+};
+
+export type ScoreSummary = {
+  mean_score: number;
+  stdev_score: number;
+  min: number;
+  max: number;
+};
+
+export type ScheduleScoreResponse = {
+  per_md: ScoreMdRow[];
+  summary: ScoreSummary;
+};

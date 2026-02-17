@@ -1,4 +1,10 @@
-import type { AIFixSuggestionsResponse, Facility, ScheduleEntry, StaffMember } from "./types";
+import type {
+  AIFixSuggestionsResponse,
+  Facility,
+  ScheduleEntry,
+  ScheduleScoreResponse,
+  StaffMember
+} from "./types";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
 
@@ -118,6 +124,28 @@ export async function suggestScheduleFixes(
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || "Failed to suggest fixes");
+  }
+  return response.json();
+}
+
+export async function scoreSchedule(
+  facilityId: number,
+  year: number,
+  month: number,
+  token?: string
+): Promise<ScheduleScoreResponse> {
+  const response = await fetch(`${API_URL}/api/v1/schedules/score`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ facility_id: facilityId, year, month })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to load score analytics");
   }
   return response.json();
 }
