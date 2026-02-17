@@ -5,6 +5,13 @@ from datetime import date, timedelta
 from statistics import mean, pstdev
 from typing import Any, Iterable
 
+ED_DAN_WEEKEND_CAP_NAMES = {
+    "edward requenez",
+    "ed requenez",
+    "daniel requenez",
+    "dan requenez",
+}
+
 
 @dataclass(frozen=True)
 class ScheduleRuleset:
@@ -158,7 +165,63 @@ def validate_schedule(
                 )
             )
 
+    # Do not put MDs on back-to-back weekday calls (Mon-Thu).
+    prev_entry = None
+    for entry in normalized:
+        if prev_entry is None:
+            prev_entry = entry
+            continue
+        if (entry.date - prev_entry.date).days != 1:
+            prev_entry = entry
+            continue
+        if prev_entry.date.weekday() > 3 or entry.date.weekday() > 3:
+            prev_entry = entry
+            continue
+        prev_ids = {prev_entry.first_call_md_id, prev_entry.second_call_md_id}
+        curr_ids = {entry.first_call_md_id, entry.second_call_md_id}
+        prev_ids.discard(None)
+        curr_ids.discard(None)
+        overlap = sorted(list(prev_ids & curr_ids))
+        if overlap:
+            violations.append(
+                ScheduleViolation(
+                    code="BACK_TO_BACK_DAILY_CALL",
+                    message="MD cannot be on call on consecutive days",
+                    date=entry.date,
+                    people=[md_name_lookup.get(person, str(person)) for person in overlap],
+                    severity="error",
+                )
+            )
+        prev_entry = entry
+
+    # Do not place same MD on first call every other weekday night (D, D+2).
+    for index, entry in enumerate(normalized):
+        if entry.first_call_md_id is None:
+            continue
+        if entry.date.weekday() > 3:
+            continue
+        for j in range(index + 1, min(index + 4, len(normalized))):
+            next_entry = normalized[j]
+            if (next_entry.date - entry.date).days != 2:
+                continue
+            if next_entry.date.weekday() > 3:
+                continue
+            if next_entry.first_call_md_id == entry.first_call_md_id:
+                md_name = md_name_lookup.get(entry.first_call_md_id, str(entry.first_call_md_id))
+                violations.append(
+                    ScheduleViolation(
+                        code="EVERY_OTHER_NIGHT_FIRST_CALL",
+                        message="Same MD cannot be first call every other night",
+                        date=next_entry.date,
+                        people=[md_name],
+                        severity="error",
+                    )
+                )
+
     if ruleset.require_weekend_continuity:
+        weekend_members: list[set[int]] = []
+        weekend_fridays: list[date] = []
+        weekend_pattern: list[tuple[date, int, int]] = []
         for entry in normalized:
             if entry.date.weekday() != 4:
                 continue
@@ -181,6 +244,80 @@ def validate_schedule(
                         message="Friday, Saturday, and Sunday must use the same two MDs",
                         date=entry.date,
                         people=[md_name_lookup.get(person, str(person)) for person in weekend_people],
+                        severity="error",
+                    )
+                )
+            else:
+                # Weekend pattern must be 1-2-1 or 2-1-2.
+                if (
+                    friday.first_call_md_id != sunday.first_call_md_id
+                    or friday.first_call_md_id == saturday.first_call_md_id
+                ):
+                    weekend_people = sorted(fri_pair)
+                    violations.append(
+                        ScheduleViolation(
+                            code="WEEKEND_PATTERN",
+                            message="Weekend first-call pattern must be 1-2-1 or 2-1-2",
+                            date=entry.date,
+                            people=[md_name_lookup.get(person, str(person)) for person in weekend_people],
+                            severity="error",
+                        )
+                    )
+                else:
+                    leader = friday.first_call_md_id
+                    partner = friday.second_call_md_id if friday.first_call_md_id != friday.second_call_md_id else saturday.first_call_md_id
+                    if leader is not None and partner is not None and leader != partner:
+                        weekend_pattern.append((entry.date, leader, partner))
+
+            if fri_pair:
+                weekend_members.append({person for person in fri_pair if person is not None})
+                weekend_fridays.append(entry.date)
+
+        # Do not put MDs on back-to-back weekend calls.
+        for idx in range(1, len(weekend_members)):
+            overlap = sorted(list(weekend_members[idx - 1] & weekend_members[idx]))
+            if overlap:
+                violations.append(
+                    ScheduleViolation(
+                        code="BACK_TO_BACK_WEEKEND",
+                        message="MD cannot be assigned on back-to-back weekends",
+                        date=weekend_fridays[idx],
+                        people=[md_name_lookup.get(person, str(person)) for person in overlap],
+                        severity="error",
+                    )
+                )
+
+        # Thursday mapping: following Thursday must map to the weekend 1-2-1 / 2-1-2 pair ordering.
+        for friday_date, leader, partner in weekend_pattern:
+            thursday_date = friday_date + timedelta(days=6)
+            thursday = by_date.get(thursday_date)
+            if not thursday:
+                continue
+            if thursday.first_call_md_id != leader or thursday.second_call_md_id != partner:
+                violations.append(
+                    ScheduleViolation(
+                        code="THURSDAY_MAPPING",
+                        message="Following Thursday must match prior weekend 1-2-1 / 2-1-2 mapping",
+                        date=thursday_date,
+                        people=[md_name_lookup.get(leader, str(leader)), md_name_lookup.get(partner, str(partner))],
+                        severity="error",
+                    )
+                )
+
+        # Ed and Dan max one weekend per month.
+        weekend_count_by_md: dict[int, int] = {}
+        for weekend in weekend_members:
+            for md_id in weekend:
+                weekend_count_by_md[md_id] = weekend_count_by_md.get(md_id, 0) + 1
+        for md_id, count in weekend_count_by_md.items():
+            md_name = md_name_lookup.get(md_id, "")
+            if md_name.strip().lower() in ED_DAN_WEEKEND_CAP_NAMES and count > 1:
+                violations.append(
+                    ScheduleViolation(
+                        code="WEEKEND_CAP_ED_DAN",
+                        message="Ed and Dan can only be on one weekend per month",
+                        date=None,
+                        people=[md_name_lookup.get(md_id, str(md_id))],
                         severity="error",
                     )
                 )
