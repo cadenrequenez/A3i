@@ -6,23 +6,14 @@ import type {
   StaffMember
 } from "./types";
 
-const PRIMARY_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
-const API_BASES = [PRIMARY_API_URL, "https://a3i-backend.onrender.com", "http://127.0.0.1:8000"].filter(Boolean);
+import { API_BASE_URL } from "./connection";
 
-async function fetchWithFallback(path: string, init?: RequestInit): Promise<Response> {
-  let lastError: Error | null = null;
-  for (const baseUrl of API_BASES) {
-    try {
-      return await fetch(`${baseUrl}${path}`, init);
-    } catch (error) {
-      lastError = error as Error;
-    }
-  }
-  throw lastError || new Error("Unable to reach backend API");
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${API_BASE_URL}${path}`, init);
 }
 
 export async function fetchSchedules(token?: string): Promise<ScheduleEntry[]> {
-  const response = await fetchWithFallback(`/api/v1/schedules/`, {
+  const response = await fetchApi(`/api/v1/schedules/`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store"
   });
@@ -41,7 +32,7 @@ export async function fetchSchedules(token?: string): Promise<ScheduleEntry[]> {
 }
 
 export async function fetchMds(token?: string): Promise<StaffMember[]> {
-  const response = await fetchWithFallback(`/api/v1/mds/?include_inactive=true`, {
+  const response = await fetchApi(`/api/v1/mds/?include_inactive=true`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store"
   });
@@ -52,7 +43,7 @@ export async function fetchMds(token?: string): Promise<StaffMember[]> {
 }
 
 export async function fetchCrnas(token?: string): Promise<StaffMember[]> {
-  const response = await fetchWithFallback(`/api/v1/crnas/`, {
+  const response = await fetchApi(`/api/v1/crnas/`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store"
   });
@@ -63,7 +54,7 @@ export async function fetchCrnas(token?: string): Promise<StaffMember[]> {
 }
 
 export async function fetchFacilities(token?: string): Promise<Facility[]> {
-  const response = await fetchWithFallback(`/api/v1/facilities/`, {
+  const response = await fetchApi(`/api/v1/facilities/`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store"
   });
@@ -78,7 +69,7 @@ export async function updateSchedule(
   payload: Partial<ScheduleEntry>,
   token?: string
 ) {
-  const response = await fetchWithFallback(`/api/v1/schedules/${scheduleId}`, {
+  const response = await fetchApi(`/api/v1/schedules/${scheduleId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -103,7 +94,7 @@ export async function generateSchedule(
   overwrite: boolean,
   token?: string
 ) {
-  const response = await fetchWithFallback(`/api/v1/schedules/generate`, {
+  const response = await fetchApi(`/api/v1/schedules/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -125,7 +116,7 @@ export async function suggestScheduleFixes(
   month: number,
   token?: string
 ): Promise<AIFixSuggestionsResponse> {
-  const response = await fetchWithFallback(`/api/v1/schedules/ai-suggest-fixes`, {
+  const response = await fetchApi(`/api/v1/schedules/ai-suggest-fixes`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -147,7 +138,7 @@ export async function scoreSchedule(
   month: number,
   token?: string
 ): Promise<ScheduleScoreResponse> {
-  const response = await fetchWithFallback(`/api/v1/schedules/score`, {
+  const response = await fetchApi(`/api/v1/schedules/score`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

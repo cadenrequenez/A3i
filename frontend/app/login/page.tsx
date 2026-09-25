@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
 
-const PREFERRED_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
-const API_FALLBACKS = [PREFERRED_API_URL, "https://a3i-backend.onrender.com", "http://127.0.0.1:8000"].filter(Boolean);
+import { API_BASE_URL, signIn } from "../../lib/connection";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,7 +16,11 @@ export default function LoginPage() {
   const [slowLoginHint, setSlowLoginHint] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_FALLBACKS[0]}/`, { method: "GET" }).catch(() => undefined);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    fetch(`${API_BASE_URL}/`, { signal: controller.signal, cache: "no-store" })
+      .catch(() => undefined).finally(() => clearTimeout(timer));
+    return () => { clearTimeout(timer); controller.abort(); };
   }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -29,7 +32,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setSlowLoginHint(false);
     const normalizedUsername = username.trim();
-    const normalizedPassword = password.trim();
+    const normalizedPassword = password;
 
     if (!normalizedUsername || !normalizedPassword) {
       setError("Username and password are required");
@@ -38,46 +41,22 @@ export default function LoginPage() {
     }
 
     let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
-    let abortTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const controller = new AbortController();
       slowHintTimer = setTimeout(() => setSlowLoginHint(true), 4000);
-      abortTimer = setTimeout(() => controller.abort(), 15000);
-      let response: Response | null = null;
-      let networkError: Error | null = null;
-      for (const baseUrl of API_FALLBACKS) {
-        try {
-          response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ username: normalizedUsername, password: normalizedPassword }),
-            signal: controller.signal
-          });
-          networkError = null;
-          break;
-        } catch (error) {
-          networkError = error as Error;
-        }
-      }
-      clearTimeout(slowHintTimer);
-      clearTimeout(abortTimer);
-      if (!response) {
-        throw networkError || new Error("Unable to reach backend API");
-      }
-      if (!response.ok) {
-        throw new Error("Invalid credentials");
-      }
-      const data = await response.json();
-      const token = data.access_token as string;
+      const token = await signIn(normalizedUsername, normalizedPassword);
       const payload = decodeJwt(token);
 
-      setToken(token);
-      if (payload.role) {
-        setRole(payload.role as "admin" | "read-only");
+      if (!payload.exp || payload.exp * 1000 <= Date.now() ||
+          !["admin", "read-only"].includes(payload.role || "")) {
+        throw new Error("A3i returned an invalid session. Please try signing in again.");
       }
-      document.cookie = `a3i_token=${token}; path=/`;
-      document.cookie = `a3i_role=${payload.role || "read-only"}; path=/`;
-      router.push("/");
+      setToken(token);
+      setRole(payload.role as "admin" | "read-only");
+      const cookieOptions = `path=/; SameSite=Lax; Max-Age=${Math.floor(payload.exp - Date.now() / 1000)}${window.location.protocol === "https:" ? "; Secure" : ""}`;
+      document.cookie = `a3i_token=${token}; ${cookieOptions}`;
+      document.cookie = `a3i_role=${payload.role}; ${cookieOptions}`;
+      router.replace("/");
+      router.refresh();
     } catch (err) {
       const message = (err as Error).name === "AbortError"
         ? "Login timed out. Please try again in a moment."
@@ -87,9 +66,7 @@ export default function LoginPage() {
       if (slowHintTimer) {
         clearTimeout(slowHintTimer);
       }
-      if (abortTimer) {
-        clearTimeout(abortTimer);
-      }
+      setSlowLoginHint(false);
       setIsSubmitting(false);
     }
   };
@@ -99,8 +76,11 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-semibold">Sign in to A3i</h1>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Username</label>
+          <label htmlFor="username" className="text-sm font-medium">Username</label>
           <input
+            id="username"
+            name="username"
+            disabled={isSubmitting}
             className="w-full rounded-lg border border-slate-200 px-3 py-2"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -111,8 +91,11 @@ export default function LoginPage() {
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Password</label>
+          <label htmlFor="password" className="text-sm font-medium">Password</label>
           <input
+            id="password"
+            name="password"
+            disabled={isSubmitting}
             type="password"
             className="w-full rounded-lg border border-slate-200 px-3 py-2"
             value={password}
@@ -121,10 +104,10 @@ export default function LoginPage() {
             required
           />
         </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
         {slowLoginHint && (
-          <p className="text-sm text-slate-600">
-            Sign in is taking longer than usual. Backend may be waking up, please wait a few seconds.
+          <p role="status" className="text-sm text-slate-600">
+            Connecting to A3i. This can take up to 90 seconds after a period of inactivity. Your sign-in is still in progress.
           </p>
         )}
         <button
