@@ -9,6 +9,7 @@ import { API_BASE_URL, signIn } from "../../lib/connection";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [slowLoginHint, setSlowLoginHint] = useState(false);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("session") === "expired") setError("Your session has expired. Please sign in again.");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 90000);
     fetch(`${API_BASE_URL}/`, { signal: controller.signal, cache: "no-store" })
@@ -72,9 +74,15 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Sign in to A3i</h1>
+    <main className="login-shell">
+      <section className="login-brand" aria-label="A3i scheduling">
+        <img src="/logos/a3i-dark.png" alt="A3i" className="login-logo" />
+        <div><p className="eyebrow">Anesthesia scheduling</p><h1>A clearer day<br />starts here.</h1><p>One place for your team,<br />your coverage, and the days ahead.</p></div>
+        <small>A3i · Built around your day</small>
+      </section>
+      <section className="login-form-wrap" aria-label="Sign in">
+      <form onSubmit={handleSubmit} className="login-card space-y-5">
+        <div className="mb-8"><h2 className="text-3xl font-semibold">Welcome back</h2><p className="mt-2 text-sm text-slate-600">Sign in to your scheduling workspace.</p></div>
         <div className="space-y-2">
           <label htmlFor="username" className="text-sm font-medium">Username</label>
           <input
@@ -96,7 +104,7 @@ export default function LoginPage() {
             id="password"
             name="password"
             disabled={isSubmitting}
-            type="password"
+            type={showPassword ? "text" : "password"}
             className="w-full rounded-lg border border-slate-200 px-3 py-2"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -104,6 +112,7 @@ export default function LoginPage() {
             required
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={showPassword} onChange={e => setShowPassword(e.target.checked)} />Show password</label>
         {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
         {slowLoginHint && (
           <p role="status" className="text-sm text-slate-600">
@@ -117,7 +126,9 @@ export default function LoginPage() {
         >
           {isSubmitting ? "Signing in..." : "Sign In"}
         </button>
+      <p className="login-note">For authorized scheduling staff.</p>
       </form>
+      </section>
     </main>
   );
 }

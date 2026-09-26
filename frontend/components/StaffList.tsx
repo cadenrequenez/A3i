@@ -9,6 +9,7 @@ export default function StaffList() {
   const [mds, setMds] = useState<StaffMember[]>([]);
   const [crnas, setCrnas] = useState<StaffMember[]>([]);
   const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,7 +19,8 @@ export default function StaffList() {
         setMds(mdData);
         setCrnas(crnaData);
       })
-      .catch((err) => setError((err as Error).message));
+      .catch((err) => setError((err as Error).message))
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredMds = useMemo(() => {
@@ -38,26 +40,27 @@ export default function StaffList() {
         </div>
         <input
           className="w-64 rounded border border-slate-300 bg-white/80 px-3 py-2 text-sm"
-          placeholder="Search staff"
+          aria-label="Search staff by name" placeholder="Search staff by name"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {loading && <p role="status" className="text-sm text-slate-600">Loading your team…</p>}
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="surface-card rounded-xl p-4">
           <h3 className="text-sm font-semibold">MDs</h3>
           <ul className="mt-3 space-y-2 text-sm">
-            {filteredMds.length === 0 && <li className="text-slate-500">No MDs found.</li>}
+            {!loading && !error && filteredMds.length === 0 && <li className="text-slate-500">No MDs found.</li>}
             {filteredMds.map((md) => (
               <li key={md.id} className="flex items-center justify-between gap-2">
                 <div>
                   <p>{md.name}</p>
                   <p className="text-xs text-slate-500">
-                    {md.pedi_qualified ? "Pedi" : "No Pedi"} · {md.cv_qualified ? "CV" : "No CV"}
+                    {md.pedi_qualified ? "Pedi" : "General"} · {md.cv_qualified ? "CV" : "Non-CV"}
                   </p>
                 </div>
-                <span className="text-xs text-slate-400">ID {md.id}</span>
+                <span className="text-xs text-slate-400">{md.active === false ? "Inactive" : "MD"}</span>
               </li>
             ))}
           </ul>
@@ -65,16 +68,16 @@ export default function StaffList() {
         <div className="surface-card rounded-xl p-4">
           <h3 className="text-sm font-semibold">CRNAs</h3>
           <ul className="mt-3 space-y-2 text-sm">
-            {filteredCrnas.length === 0 && <li className="text-slate-500">No CRNAs found.</li>}
+            {!loading && !error && filteredCrnas.length === 0 && <li className="text-slate-500">No CRNAs found.</li>}
             {filteredCrnas.map((crna) => (
               <li key={crna.id} className="flex items-center justify-between gap-2">
                 <div>
                   <p>{crna.name}</p>
                   <p className="text-xs text-slate-500">
-                    {crna.pedi_qualified ? "Pedi" : "No Pedi"}
+                    {crna.pedi_qualified ? "Pedi" : "General"}
                   </p>
                 </div>
-                <span className="text-xs text-slate-400">ID {crna.id}</span>
+                <span className="text-xs text-slate-400">CRNA</span>
               </li>
             ))}
           </ul>

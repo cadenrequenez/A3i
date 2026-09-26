@@ -34,9 +34,13 @@ export default function ScheduleBoard() {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [month, setMonth] = useState(Number(todayIso.slice(5, 7)));
   const [year, setYear] = useState(Number(todayIso.slice(0, 4)));
-  const [overwrite, setOverwrite] = useState(true);
+  const [overwrite, setOverwrite] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving,setSaving] = useState(false);
+  const [generating,setGenerating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [role, setRole] = useState<"admin" | "read-only">("read-only");
+  const [inactiveMdIds, setInactiveMdIds] = useState<number[]>([]);
   const [mdMap, setMdMap] = useState<Record<number, string>>({});
   const [editCallFirst, setEditCallFirst] = useState<number | null>(null);
   const [editCallSecond, setEditCallSecond] = useState<number | null>(null);
@@ -69,7 +73,7 @@ export default function ScheduleBoard() {
           setYear(Number(firstDate.slice(0, 4)));
         }
       })
-      .catch(() => undefined);
+      .catch((error) => { setStatus((error as Error).message); throw error; });
   };
 
 
@@ -83,12 +87,13 @@ export default function ScheduleBoard() {
           mdLookup[md.id] = md.name;
         });
         setMdMap(mdLookup);
+        setInactiveMdIds(mds.filter(md => md.active === false).map(md => md.id));
         const rioFacility = facilities.find((item) => item.site_name === RIO_FACILITY);
         setRioFacilityId(rioFacility?.id ?? null);
       })
-      .finally(() => {
-        loadSchedules();
-      });
+      .then(() => loadSchedules())
+      .catch((error) => setStatus((error as Error).message))
+      .finally(() => setLoading(false));
   }, []);
 
   const hydratedSchedules = useMemo(
@@ -118,13 +123,13 @@ export default function ScheduleBoard() {
     if (entry?.callAssignments) {
       setEditCallFirst(entry.callAssignments.first_call_md_id ?? null);
       setEditCallSecond(entry.callAssignments.second_call_md_id ?? null);
-    }
+    } else { setEditCallFirst(null); setEditCallSecond(null); }
   }, [selectedDate, hydratedSchedules]);
 
   const shiftMonth = (delta: number) => {
     const current = parseIsoDate(selectedDate);
-    current.setMonth(current.getMonth() + delta);
     current.setDate(1);
+    current.setMonth(current.getMonth() + delta);
     const nextDate = formatIsoDate(current);
     setSelectedDate(nextDate);
     setMonth(Number(nextDate.slice(5, 7)));
@@ -138,6 +143,7 @@ export default function ScheduleBoard() {
       setStatus("Missing auth token.");
       return;
     }
+    if (!window.confirm(`Generate all 12 months of ${year}? ${overwrite ? "Existing schedules will be replaced." : "Existing schedules will be kept."}`)) return;
     setIsGeneratingYear(true);
     setStatus(`Generating all months for ${year}...`);
     try {
@@ -169,170 +175,42 @@ export default function ScheduleBoard() {
   }, [selectedDate, hydratedSchedules, mdMap]);
 
 
-  return (
-    <div className="space-y-6">
-      <div className="surface-card flex items-center justify-between rounded-xl p-4">
-        <div>
-          <h2 className="text-xl font-semibold">Schedule</h2>
-          <p className="text-sm text-slate-600">Manage Rio Grande Regional Hospital MD call coverage.</p>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <span>Selected:</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(event) => {
-              const nextDate = event.target.value;
-              setSelectedDate(nextDate);
-              setMonth(Number(nextDate.slice(5, 7)));
-              setYear(Number(nextDate.slice(0, 4)));
-              setView("day");
-            }}
-            className="rounded border border-slate-200 px-2 py-1 text-sm"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            className={`rounded-full px-3 py-1 text-sm ${view === "month" ? "bg-slate-900 text-white" : "bg-white border"}`}
-            onClick={() => setView("month")}
-          >
-            Month
-          </button>
-          <button
-            className={`rounded-full px-3 py-1 text-sm ${view === "day" ? "bg-slate-900 text-white" : "bg-white border"}`}
-            onClick={() => setView("day")}
-          >
-            Day
-          </button>
-        </div>
+  const monthLabel = new Date(year,month-1,1).toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  const selectedLabel = parseIsoDate(selectedDate).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  async function generateMonth(){
+    if(overwrite && !window.confirm(`Replace the saved schedule for ${monthLabel}?`))return;
+    setGenerating(true);setStatus(null);
+    try {await generateSchedule(year,month,overwrite,getToken());await loadSchedules();setStatus(`Schedule generated for ${monthLabel}.`);}
+    catch(error){setStatus((error as Error).message);}finally{setGenerating(false);}
+  }
+  async function saveCall(){
+    if(!editCallFirst||!editCallSecond||editCallFirst===editCallSecond){setStatus("Choose two different doctors before saving.");return;}
+    setSaving(true);setStatus(null);
+    try { const row=daySchedules[0];if(!row?.id)throw new Error("No saved assignment exists for this date.");
+      await updateSchedule(row.id,{callAssignments:{first_call_md_id:editCallFirst,second_call_md_id:editCallSecond}},getToken());
+      await loadSchedules();setStatus("Call assignments saved.");
+    }catch(error){setStatus((error as Error).message);}finally{setSaving(false);}
+  }
+  return <div className="schedule-workspace">
+    <header className="schedule-heading"><div><p className="eyebrow">{RIO_FACILITY}</p><h1>{monthLabel}</h1></div>
+     <div className="schedule-navigation"><div className="view-toggle"><button aria-pressed={view==="month"} onClick={()=>setView("month")}>Month</button><button aria-pressed={view==="day"} onClick={()=>setView("day")}>Day</button></div>
+      <button aria-label="Previous month" onClick={()=>shiftMonth(-1)}>‹</button><button onClick={()=>{setSelectedDate(todayIso);setMonth(Number(todayIso.slice(5,7)));setYear(Number(todayIso.slice(0,4)));setView("month");}}>Today</button><button aria-label="Next month" onClick={()=>shiftMonth(1)}>›</button>
+     </div>
+    </header>
+    <div className="schedule-body">
+     {status && <p role="status" className="status-message">{status}</p>}
+     {loading && <p role="status" className="status-message">Loading your saved schedule…</p>}
+     <div className={`schedule-layout ${view==="day"?"day-view":""}`}>
+      <div className="schedule-calendar-area">{view==="day"?<div className="day-overview surface-card"><button className="text-button" onClick={()=>setView("month")}>← Back to month</button><p className="eyebrow mt-6">Daily coverage</p><h2>{selectedLabel}</h2><p className="mt-2 text-sm text-slate-600">{RIO_FACILITY}</p><div className="day-call-summary"><div><span>First call</span><strong>{daySchedules[0]?.callFirstName||"Unassigned"}</strong></div><div><span>Second call</span><strong>{daySchedules[0]?.callSecondName||"Unassigned"}</strong></div><div><span>Post call</span><strong>{postCallName==="TBD"?"Not available":postCallName}</strong></div></div></div>:<Calendar schedules={hydratedSchedules} view="month" selectedDate={selectedDate} onSelectDate={date=>{setSelectedDate(date);if(window.matchMedia("(max-width: 700px)").matches)setView("day");}}/>}
       </div>
-
-      <div className="surface-card rounded-xl p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <label className="text-slate-600">Month</label>
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={month}
-              onChange={(event) => {
-                const nextMonth = Number(event.target.value);
-                if (Number.isNaN(nextMonth) || nextMonth < 1 || nextMonth > 12) {
-                  return;
-                }
-                setMonth(nextMonth);
-                setSelectedDate(`${year}-${String(nextMonth).padStart(2, "0")}-01`);
-                setView("month");
-              }}
-              className="w-16 rounded border border-slate-200 px-2 py-1"
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <label className="text-slate-600">Year</label>
-            <input
-              type="number"
-              min={2024}
-              max={2100}
-              value={year}
-              onChange={(event) => {
-                const nextYear = Number(event.target.value);
-                if (Number.isNaN(nextYear) || nextYear < 2024 || nextYear > 2100) {
-                  return;
-                }
-                setYear(nextYear);
-                setSelectedDate(`${nextYear}-${String(month).padStart(2, "0")}-01`);
-                setView("month");
-              }}
-              className="w-24 rounded border border-slate-200 px-2 py-1"
-            />
-          </div>
-          <button
-            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-            onClick={() => shiftMonth(-1)}
-          >
-            Prev month
-          </button>
-          <button
-            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-            onClick={() => shiftMonth(1)}
-          >
-            Next month
-          </button>
-          <button
-            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-            onClick={() => {
-              setSelectedDate(todayIso);
-              setMonth(Number(todayIso.slice(5, 7)));
-              setYear(Number(todayIso.slice(0, 4)));
-              setView("month");
-            }}
-          >
-            Jump to today
-          </button>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={overwrite}
-              onChange={(event) => setOverwrite(event.target.checked)}
-            />
-            Overwrite existing
-          </label>
-          <button
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-            disabled={role !== "admin"}
-            onClick={async () => {
-              setStatus(null);
-              try {
-                await generateSchedule(year, month, overwrite, getToken() || undefined);
-                await loadSchedules();
-                const paddedMonth = String(month).padStart(2, "0");
-                setSelectedDate(`${year}-${paddedMonth}-01`);
-                setView("month");
-                setStatus(`Schedule generated for ${year}-${paddedMonth}.`);
-              } catch (error) {
-                setStatus((error as Error).message);
-              }
-            }}
-          >
-            Generate Schedule
-          </button>
-          <button
-            className="rounded-full bg-sky-800 px-4 py-2 text-sm text-white disabled:opacity-50"
-            disabled={role !== "admin" || isGeneratingYear}
-            onClick={generateFullYear}
-          >
-            {isGeneratingYear ? "Generating Year..." : "Generate Full Year"}
-          </button>
-          <button
-            className="rounded-full bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
-            disabled={role !== "admin" || !rioFacilityId}
-            onClick={async () => {
-              setSuggestionStatus("Requesting AI suggestions...");
-              try {
-                if (!rioFacilityId) {
-                  throw new Error("Rio facility not found");
-                }
-                const result = await suggestScheduleFixes(rioFacilityId, year, month, getToken() || undefined);
-                setSuggestions(result.suggestions);
-                setSuggestionStatus(
-                  result.suggestions.length
-                    ? `Found ${result.suggestions.length} validated suggestions.`
-                    : "No valid suggestions returned."
-                );
-              } catch (error) {
-                setSuggestionStatus((error as Error).message || "Failed to load suggestions.");
-              }
-            }}
-          >
-            Suggest fixes
-          </button>
-          {role !== "admin" && <span className="text-xs text-slate-500">Admin only</span>}
-        </div>
-        {status && <p className="mt-2 text-sm text-slate-600">{status}</p>}
-        {suggestionStatus && <p className="mt-1 text-sm text-slate-600">{suggestionStatus}</p>}
-      </div>
-
+      <aside className="schedule-detail" aria-label="Selected day">
+       <section className="detail-card"><p className="eyebrow">Selected day</p><h2>{selectedLabel}</h2><label className="field-label" htmlFor="schedule-date">Go to date</label><input id="schedule-date" type="date" value={selectedDate} onChange={e=>{if(!e.target.value)return;setSelectedDate(e.target.value);setMonth(Number(e.target.value.slice(5,7)));setYear(Number(e.target.value.slice(0,4)));}}/>
+        {daySchedules.length===0?<p className="empty-note">No saved coverage for this day. Use planning tools to create a schedule.</p>:<><label className="field-label" htmlFor="first-call">First-call doctor</label><select id="first-call" disabled={role!=="admin"||saving} value={editCallFirst??""} onChange={e=>setEditCallFirst(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select><label className="field-label" htmlFor="second-call">Second-call doctor</label><select id="second-call" disabled={role!=="admin"||saving} value={editCallSecond??""} onChange={e=>setEditCallSecond(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select>{role==="admin"?<button className="primary-button mt-5 w-full" disabled={saving||loading} onClick={saveCall}>{saving?"Saving…":"Save changes"}</button>:<p className="empty-note">View-only access</p>}</>}
+       </section>
+       {role==="admin"&&<details className="planning-tools"><summary>Planning tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Generate coverage for <strong>{monthLabel}</strong>. Review the saved result before using it.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
+      </aside>
+     </div>
+     {suggestionStatus&&<p role="status" className="status-message">{suggestionStatus}</p>}
       {suggestions.length > 0 && (
         <div className="surface-card rounded-xl p-4">
           <h3 className="text-lg font-semibold">AI Suggestions Preview</h3>
@@ -405,117 +283,6 @@ export default function ScheduleBoard() {
         </div>
       )}
 
-      <div className="surface-card rounded-xl p-4 text-sm text-slate-700">
-        <p className="font-semibold">Quick steps</p>
-        <ol className="mt-2 list-decimal pl-5">
-          <li>Pick month/year and click Generate Schedule.</li>
-          <li>Use Prev/Next month to move fast across months.</li>
-          <li>Switch to Day view, pick a date, and edit call assignments.</li>
-        </ol>
-      </div>
-
-      <Calendar
-        schedules={hydratedSchedules}
-        view={view}
-        selectedDate={selectedDate}
-        onSelectDate={(date) => {
-          setSelectedDate(date);
-          setView("day");
-        }}
-      />
-
-      {view === "day" && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Call schedule</h3>
-          {daySchedules.length === 0 && (
-            <p className="text-sm text-slate-500">No schedule entries for this day.</p>
-          )}
-          {daySchedules[0]?.callAssignments && (
-            <div className="surface-card rounded-lg p-3 text-sm text-slate-700">
-              <p className="font-semibold">Call Assignments</p>
-              <p>
-                1st Call:{" "}
-                {mdMap[daySchedules[0].callAssignments?.first_call_md_id || 0] ||
-                  daySchedules[0].callAssignments?.first_call_md_id ||
-                  "TBD"}
-              </p>
-              <p>
-                2nd Call:{" "}
-                {mdMap[daySchedules[0].callAssignments?.second_call_md_id || 0] ||
-                  daySchedules[0].callAssignments?.second_call_md_id ||
-                  "TBD"}
-              </p>
-              <p>Post Call: {postCallName}</p>
-              {role === "admin" && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <label className="text-xs text-slate-500">Edit call:</label>
-                  <select
-                    className="rounded border border-slate-200 px-2 py-1 text-sm"
-                    value={editCallFirst ?? ""}
-                    onChange={(event) => setEditCallFirst(Number(event.target.value))}
-                  >
-                    <option value="">1st Call</option>
-                    {Object.entries(mdMap).map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="rounded border border-slate-200 px-2 py-1 text-sm"
-                    value={editCallSecond ?? ""}
-                    onChange={(event) => setEditCallSecond(Number(event.target.value))}
-                  >
-                    <option value="">2nd Call</option>
-                    {Object.entries(mdMap).map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="rounded bg-slate-900 px-3 py-1 text-xs text-white"
-                    onClick={async () => {
-                      setStatus(null);
-                      const payload = {
-                        first_call_md_id: editCallFirst,
-                        second_call_md_id: editCallSecond
-                      };
-                      await Promise.all(
-                        daySchedules
-                          .filter((entry) => entry.id)
-                          .map((entry) =>
-                            updateSchedule(
-                              entry.id as number,
-                              { callAssignments: payload },
-                              getToken() || undefined
-                            )
-                          )
-                      );
-                      await loadSchedules();
-                      setStatus("Call assignments saved.");
-                    }}
-                  >
-                    Save call
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="space-y-2">
-            {daySchedules.map((entry) => (
-              <div key={`${entry.date}-${entry.facility}`} className="surface-card rounded-lg p-3">
-                <div>
-                  <p className="font-semibold">{entry.facility}</p>
-                  <p className="text-xs text-slate-600">
-                    MDs: {entry.mdNames?.join(", ") || entry.mdIds.join(", ") || "TBD"}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
-  );
+  </div>;
 }

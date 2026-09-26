@@ -9,7 +9,16 @@ import type {
 import { API_BASE_URL } from "./connection";
 
 async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${API_BASE_URL}${path}`, init);
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem("a3i_token");
+    localStorage.removeItem("a3i_role");
+    document.cookie = "a3i_token=; path=/; Max-Age=0";
+    document.cookie = "a3i_role=; path=/; Max-Age=0";
+    window.location.assign("/login?session=expired");
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+  return response;
 }
 
 export async function fetchSchedules(token?: string): Promise<ScheduleEntry[]> {

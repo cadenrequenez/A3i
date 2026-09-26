@@ -9,6 +9,8 @@ export default function AppHeader() {
   const logoSrc = isWelcome ? "/logos/a3i-light.png" : "/logos/a3i-dark.png";
   const [logoVisible, setLogoVisible] = useState(true);
 
+  if (pathname === "/" || pathname === "/login") return null;
+
   return (
     <header className="mx-auto w-full max-w-6xl px-6 pb-4 pt-6">
       <div className={`surface-card flex items-center justify-between rounded-2xl px-5 py-3 ${isWelcome ? "bg-slate-950 text-white" : ""}`}>

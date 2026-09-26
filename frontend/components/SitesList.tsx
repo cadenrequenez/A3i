@@ -7,13 +7,15 @@ import type { Facility } from "../lib/types";
 
 export default function SitesList() {
   const [sites, setSites] = useState<Facility[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getToken();
     fetchFacilities(token)
       .then((data) => setSites(data))
-      .catch((err) => setError((err as Error).message));
+      .catch((err) => setError((err as Error).message))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -22,9 +24,10 @@ export default function SitesList() {
         <h2 className="text-lg font-semibold">Sites</h2>
         <p className="text-sm text-slate-600">Facility staffing requirements at a glance.</p>
       </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {loading && <p role="status" className="text-sm text-slate-600">Loading facilities…</p>}
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <div className="grid gap-4 md:grid-cols-2">
-        {sites.length === 0 && <p className="text-sm text-slate-500">No facilities found.</p>}
+        {!loading && !error && sites.length === 0 && <p className="text-sm text-slate-500">No facilities found.</p>}
         {sites.map((site) => (
           <div key={site.id} className="surface-card rounded-xl p-4">
             <h3 className="text-sm font-semibold">{site.site_name}</h3>

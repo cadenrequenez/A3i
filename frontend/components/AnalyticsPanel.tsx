@@ -61,6 +61,7 @@ export default function AnalyticsPanel() {
         </div>
         <div className="flex items-center gap-2 text-sm">
           <input
+            aria-label="Workload year"
             type="number"
             min={2024}
             max={2100}
@@ -69,6 +70,7 @@ export default function AnalyticsPanel() {
             className="w-24 rounded border border-slate-300 px-2 py-1"
           />
           <input
+            aria-label="Workload month"
             type="number"
             min={1}
             max={12}
@@ -101,11 +103,11 @@ export default function AnalyticsPanel() {
               <thead>
                 <tr className="bg-slate-100 text-left">
                   <th className="px-2 py-1">MD</th>
-                  <th className="px-2 py-1">1st</th>
-                  <th className="px-2 py-1">2nd</th>
+                  <th className="px-2 py-1">First call</th>
+                  <th className="px-2 py-1">Second call</th>
                   <th className="px-2 py-1">Weekends</th>
-                  <th className="px-2 py-1">B2B 1st</th>
-                  <th className="px-2 py-1">B2B Wknd</th>
+                  <th className="px-2 py-1">Consecutive first calls</th>
+                  <th className="px-2 py-1">Consecutive weekends</th>
                   <th className="px-2 py-1">Total</th>
                   <th className="px-2 py-1">Score</th>
                 </tr>
