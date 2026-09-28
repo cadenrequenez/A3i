@@ -1,44 +1,15 @@
 "use client";
-
 import { useEffect, useState } from "react";
-import { fetchFacilities } from "../lib/api";
-import { getToken } from "../lib/auth";
+import { fetchFacilities, saveStaffing } from "../lib/api";
+import { getRole, getToken } from "../lib/auth";
 import type { Facility } from "../lib/types";
-
-export default function SitesList() {
-  const [sites, setSites] = useState<Facility[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const token = getToken();
-    fetchFacilities(token)
-      .then((data) => setSites(data))
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Sites</h2>
-        <p className="text-sm text-slate-600">Facility staffing requirements at a glance.</p>
-      </div>
-      {loading && <p role="status" className="text-sm text-slate-600">Loading facilities…</p>}
-      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
-      <div className="grid gap-4 md:grid-cols-2">
-        {!loading && !error && sites.length === 0 && <p className="text-sm text-slate-500">No facilities found.</p>}
-        {sites.map((site) => (
-          <div key={site.id} className="surface-card rounded-xl p-4">
-            <h3 className="text-sm font-semibold">{site.site_name}</h3>
-            <p className="mt-2 text-xs text-slate-500">Staffing requirements</p>
-            <ul className="mt-2 text-sm text-slate-700">
-              <li>MDs: {site.staffing_requirements?.md ?? "-"}</li>
-              <li>CRNAs: {site.staffing_requirements?.crna ?? "-"}</li>
-            </ul>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+export default function SitesList(){
+ const [sites,setSites]=useState<Facility[]>([]);const [loading,setLoading]=useState(true);const [admin,setAdmin]=useState(false);
+ const [error,setError]=useState<string|null>(null);const [message,setMessage]=useState("");const [saving,setSaving]=useState(false);
+ const [edit,setEdit]=useState<{site:Facility;md:string;crna:string}|null>(null);
+ useEffect(()=>{setAdmin(getRole()==="admin");fetchFacilities(getToken()).then(setSites).catch(e=>setError(e.message)).finally(()=>setLoading(false));},[]);
+ async function save(e:React.FormEvent){e.preventDefault();if(!edit)return;const md=Number(edit.md),crna=Number(edit.crna);if(!edit.md||!edit.crna||![md,crna].every(n=>Number.isInteger(n)&&n>=0&&n<=100)){setError("Enter whole staffing amounts between 0 and 100.");return;}setSaving(true);setError(null);setMessage("");try{const updated=await saveStaffing(edit.site,md,crna,getToken());setSites(previous=>previous.map(s=>s.id===updated.id?updated:s));setMessage(`Staffing requirements saved for ${updated.site_name}.`);setEdit(null);}catch(e){setError((e as Error).message);}finally{setSaving(false);}}
+ return <section className="space-y-4"><div><h2 className="text-lg font-semibold">Sites</h2><p className="text-sm text-slate-600">Set the MD and CRNA staffing requirements for each facility.</p><p className="mt-2 text-sm text-slate-600">These are facility planning targets. The automatic call schedule still assigns two MDs at Rio Grande; it does not generate full facility coverage.</p></div>{loading&&<p role="status">Loading facilities…</p>}{error&&<p role="alert" className="status-message">{error}</p>}{message&&<p role="status" className="status-message">{message}</p>}
+ {edit&&<form onSubmit={save} aria-label="Staffing requirements editor" className="surface-card rounded-xl p-5 space-y-4"><h3 className="font-semibold">{edit.site.site_name}</h3><div className="grid gap-4 sm:grid-cols-2"><label>MDs needed<input autoFocus type="number" required min="0" max="100" step="1" className="mt-2 w-full" value={edit.md} onChange={e=>setEdit({...edit,md:e.target.value})}/></label><label>CRNAs needed<input type="number" required min="0" max="100" step="1" className="mt-2 w-full" value={edit.crna} onChange={e=>setEdit({...edit,crna:e.target.value})}/></label></div><div className="flex gap-3"><button className="primary-button" disabled={saving}>{saving?"Saving…":"Save staffing amounts"}</button><button type="button" className="secondary-button" disabled={saving} onClick={()=>setEdit(null)}>Cancel</button></div></form>}
+ <div className="grid gap-4 md:grid-cols-2">{sites.map(site=><section key={site.id} className="surface-card rounded-xl p-5"><h3 className="font-semibold">{site.site_name}</h3><dl className="my-4 grid grid-cols-2 gap-4"><div><dt className="text-sm text-slate-600">MDs needed</dt><dd className="text-2xl font-semibold">{site.staffing_requirements?.md??"—"}</dd></div><div><dt className="text-sm text-slate-600">CRNAs needed</dt><dd className="text-2xl font-semibold">{site.staffing_requirements?.crna??"—"}</dd></div></dl>{admin&&<button className="secondary-button" disabled={saving} aria-label={`Edit staffing for ${site.site_name}`} onClick={()=>{setError(null);setEdit({site,md:String(site.staffing_requirements?.md??0),crna:String(site.staffing_requirements?.crna??0)});}}>Edit staffing</button>}</section>)}</div></section>;
 }

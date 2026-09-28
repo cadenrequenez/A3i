@@ -9,3 +9,6 @@ class User(Base):
     username = Column(String, nullable=False, unique=True, index=True)
     password_hash = Column(String, nullable=False)
     role = Column(String, nullable=False, default="read-only")
+
+    display_name = Column(String, nullable=True)
+    title = Column(String, nullable=True)

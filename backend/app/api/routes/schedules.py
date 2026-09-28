@@ -107,7 +107,7 @@ def _load_assignments(
 
 def _md_lookups(db: Session) -> tuple[dict[int, str], set[int], dict[int, dict]]:
     md_rows = db.query(models.MD).filter(models.MD.active.is_(True)).all()
-    md_name_lookup = {row.id: row.name for row in md_rows}
+    md_name_lookup = {row.id: (row.availability or {}).get("scheduling_name", row.name) for row in md_rows}
     cv_qualified_ids = {row.id for row in md_rows if row.cv_qualified}
     md_availability_lookup = {row.id: (row.availability or {}) for row in md_rows}
     md_name_lookup = {
@@ -517,7 +517,7 @@ def generate_schedule(
     md_staff = [
         {
             "id": md.id,
-            "name": md.name,
+            "name": (md.availability or {}).get("scheduling_name", md.name),
             "pedi_qualified": md.pedi_qualified,
             "cv_qualified": md.cv_qualified,
         }

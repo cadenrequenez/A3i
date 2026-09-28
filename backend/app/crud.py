@@ -12,6 +12,10 @@ def create_md(db: Session, data: schemas.MDCreate) -> models.MD:
 
 
 def update_md(db: Session, md: models.MD, data: schemas.MDUpdate) -> models.MD:
+    if data.name is not None and data.name != md.name:
+        availability = dict(md.availability or {})
+        availability.setdefault("scheduling_name", md.name)
+        md.availability = availability
     for key, value in data.dict(exclude_unset=True).items():
         setattr(md, key, value)
     db.commit()
@@ -72,6 +76,8 @@ def create_user(db: Session, data: schemas.UserCreate) -> models.User:
         username=data.username,
         password_hash=hash_password(data.password),
         role=data.role,
+        display_name=data.display_name,
+        title=data.title,
     )
     db.add(user)
     db.commit()

@@ -1,10 +1,13 @@
-from datetime import date
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from datetime import date as Date
+from typing import Any, Dict, List, Optional, Literal, Annotated
+from pydantic import BaseModel, StringConstraints, field_validator
+
+
+StaffName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
 
 class StaffBase(BaseModel):
-    name: str
+    name: StaffName
     active: bool = True
     pedi_qualified: bool = False
     cv_qualified: bool = False
@@ -17,7 +20,7 @@ class MDCreate(StaffBase):
 
 
 class MDUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[StaffName] = None
     active: Optional[bool] = None
     pedi_qualified: Optional[bool] = None
     cv_qualified: Optional[bool] = None
@@ -47,7 +50,19 @@ class CRNAOut(StaffBase):
         from_attributes = True
 
 
-class FacilityBase(BaseModel):
+class StaffingValidation(BaseModel):
+    @field_validator("staffing_requirements", check_fields=False)
+    @classmethod
+    def validate_staffing(cls, value):
+        if value is None:
+            return value
+        for key in ("md", "crna"):
+            if key in value and (type(value[key]) is not int or not 0 <= value[key] <= 100):
+                raise ValueError("Staffing amounts must be whole numbers from 0 to 100")
+        return value
+
+
+class FacilityBase(StaffingValidation):
     site_name: str
     staffing_requirements: Dict[str, Any] = {}
 
@@ -56,7 +71,7 @@ class FacilityCreate(FacilityBase):
     pass
 
 
-class FacilityUpdate(BaseModel):
+class FacilityUpdate(StaffingValidation):
     site_name: Optional[str] = None
     staffing_requirements: Optional[Dict[str, Any]] = None
 
@@ -69,7 +84,7 @@ class FacilityOut(FacilityBase):
 
 
 class ScheduleBase(BaseModel):
-    date: date
+    date: Date
     facility_id: int
     md_ids: List[int] = []
     crna_ids: List[int] = []
@@ -104,12 +119,12 @@ class ScheduleGenerateRequest(BaseModel):
 
 class ScheduleGenerateResponse(BaseModel):
     created: int
-    start_date: date
-    end_date: date
+    start_date: Date
+    end_date: Date
 
 
 class ScheduleAssignment(BaseModel):
-    date: date
+    date: Date
     first_call_md_id: int | None = None
     second_call_md_id: int | None = None
 
@@ -117,7 +132,7 @@ class ScheduleAssignment(BaseModel):
 class ScheduleViolationOut(BaseModel):
     code: str
     message: str
-    date: Optional[date] = None
+    date: Optional[Date] = None
     people: List[str] = []
     severity: str
 
@@ -126,8 +141,8 @@ class ScheduleValidationRequest(BaseModel):
     facility_id: Optional[int] = None
     year: Optional[int] = None
     month: Optional[int] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    start_date: Optional[Date] = None
+    end_date: Optional[Date] = None
     schedule: Optional[List[ScheduleAssignment]] = None
 
 
@@ -164,13 +179,13 @@ class ScheduleScoreRequest(BaseModel):
     facility_id: Optional[int] = None
     year: Optional[int] = None
     month: Optional[int] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    start_date: Optional[Date] = None
+    end_date: Optional[Date] = None
     schedule: Optional[List[ScheduleAssignment]] = None
 
 
 class AISuggestionChange(BaseModel):
-    date: date
+    date: Date
     set_first_call_md_id: int
     set_second_call_md_id: int
 
@@ -190,7 +205,7 @@ class AISuggestFixesRequest(BaseModel):
     facility_id: int
     year: int
     month: int
-    focus_weekend_date: Optional[date] = None
+    focus_weekend_date: Optional[Date] = None
     max_suggestions: int = 3
 
 
@@ -219,15 +234,19 @@ class Token(BaseModel):
 
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
-    role: str
+    username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9._-]+$")]
+    password: Annotated[str, StringConstraints(min_length=12, max_length=72)]
+    role: Literal["admin", "read-only"]
+    display_name: Optional[StaffName] = None
+    title: Optional[StaffName] = None
 
 
 class UserOut(BaseModel):
     id: int
     username: str
     role: str
+    display_name: Optional[str] = None
+    title: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -1,48 +1,65 @@
 import os
+import uuid
+
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
 
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
-os.environ["JWT_SECRET"] = "test-secret"
+# Do not inherit DATABASE_URL: it may point to production.
+test_url = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg2:///a3i_test")
+if make_url(test_url).get_backend_name() != "postgresql":
+    raise RuntimeError("TEST_DATABASE_URL must use an isolated PostgreSQL database")
+os.environ["DATABASE_URL"] = test_url
+os.environ["JWT_SECRET"] = "isolated-test-secret"
 
 from app.db.base import Base
 from app.main import app
 from app.core.deps import get_db
-
-engine = create_engine(
-    os.environ["DATABASE_URL"],
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base.metadata.create_all(bind=engine)
+from app.core import token_blacklist
 
 
-def override_get_db():
-    db = TestingSessionLocal()
+@pytest.fixture(scope="session")
+def engine():
+    schema = "a3i_test_" + uuid.uuid4().hex
+    control = create_engine(test_url)
+    with control.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    test_engine = create_engine(test_url, connect_args={"options": f"-csearch_path={schema}"})
     try:
-        yield db
+        Base.metadata.create_all(bind=test_engine)
+        yield test_engine
     finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
+        test_engine.dispose()
+        with control.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        control.dispose()
 
 
 @pytest.fixture()
-def db_session():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def db_session(engine):
+    # API commits release savepoints, never the enclosing test transaction.
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        db = Session(bind=connection, join_transaction_mode="create_savepoint")
+        token_blacklist._BLACKLIST.clear()
+        try:
+            yield db
+        finally:
+            db.close()
+            transaction.rollback()
+            token_blacklist._BLACKLIST.clear()
 
 
 @pytest.fixture()
-def client():
-    with TestClient(app) as test_client:
-        yield test_client
+def client(db_session):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(get_db, None)

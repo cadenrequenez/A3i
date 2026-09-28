@@ -52,7 +52,7 @@ export async function fetchMds(token?: string): Promise<StaffMember[]> {
 }
 
 export async function fetchCrnas(token?: string): Promise<StaffMember[]> {
-  const response = await fetchApi(`/api/v1/crnas/`, {
+  const response = await fetchApi(`/api/v1/crnas/?include_inactive=true`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store"
   });
@@ -161,4 +161,27 @@ export async function scoreSchedule(
     throw new Error(message || "Failed to load score analytics");
   }
   return response.json();
+}
+
+export async function saveStaff(kind: "mds" | "crnas", person: Partial<StaffMember>, token?: string): Promise<StaffMember> {
+  const { id, name, active, pedi_qualified, cv_qualified } = person;
+  const response = await fetchApi(`/api/v1/${kind}/${id ?? ""}`, {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name, active, pedi_qualified, cv_qualified })
+  });
+  if (!response.ok) throw new Error("Staff changes could not be saved. Your edits are still here; please try again.");
+  return response.json();
+}
+
+export type AccountProfile = { username: string; display_name?: string; title?: string; role: string };
+export async function fetchProfile(token?: string): Promise<AccountProfile> {
+ const response = await fetchApi('/api/v1/auth/me', {headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+ if (!response.ok) throw new Error('Unable to load your profile.');
+ return response.json();
+}
+export async function saveStaffing(site: Facility, md: number, crna: number, token?: string): Promise<Facility> {
+ const response = await fetchApi(`/api/v1/facilities/${site.id}`, {method:'PUT',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({staffing_requirements:{...site.staffing_requirements,md,crna}})});
+ if(!response.ok) throw new Error('Staffing amounts could not be saved. Please try again.');
+ return response.json();
 }

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 import logging
 from app import crud, models, schemas
-from app.core.deps import get_db, get_current_user, oauth2_scheme
+from app.core.deps import get_db, get_current_user, get_current_admin, oauth2_scheme
 from app.core.security import create_access_token, verify_password
 from app.core import token_blacklist
 
@@ -25,7 +25,11 @@ def login(
 
 
 @router.post("/users", response_model=schemas.UserOut)
-def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    data: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(get_current_admin),
+):
     existing = db.query(models.User).filter(models.User.username == data.username).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
@@ -50,3 +54,8 @@ def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
 def logout(token: str = Depends(oauth2_scheme), _user=Depends(get_current_user)):
     token_blacklist.add(token)
     return {"status": "logged_out"}
+
+
+@router.get("/me", response_model=schemas.UserOut)
+def current_profile(user=Depends(get_current_user)):
+    return user
