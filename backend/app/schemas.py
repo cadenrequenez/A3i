@@ -235,7 +235,7 @@ class Token(BaseModel):
 
 class UserCreate(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9._-]+$")]
-    password: Annotated[str, StringConstraints(min_length=12, max_length=72)]
+    password: Annotated[str, StringConstraints(min_length=6, max_length=72)]
     role: Literal["admin", "read-only"]
     display_name: Optional[StaffName] = None
     title: Optional[StaffName] = None
