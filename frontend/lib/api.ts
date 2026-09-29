@@ -113,8 +113,10 @@ export async function generateSchedule(
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Failed to generate schedule");
+    const data = await response.json().catch(()=>null);
+    const detail = data?.detail;
+    const reasons = Array.isArray(detail?.violations) ? detail.violations.slice(0,3).map((item:any)=>`${item.date || ""} ${item.message}`).join("; ") : "";
+    throw new Error(reasons ? `Automatic generation could not satisfy the rules: ${reasons}. You can still assign and save days yourself.` : typeof detail === "string" ? detail : "Automatic generation could not finish. You can assign and save days yourself, or try again.");
   }
   return response.json();
 }
@@ -184,4 +186,11 @@ export async function saveStaffing(site: Facility, md: number, crna: number, tok
  const response = await fetchApi(`/api/v1/facilities/${site.id}`, {method:'PUT',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({staffing_requirements:{...site.staffing_requirements,md,crna}})});
  if(!response.ok) throw new Error('Staffing amounts could not be saved. Please try again.');
  return response.json();
+}
+
+export async function saveManualCallDay(payload: {date:string;facility_id:number;first_call_md_id:number;second_call_md_id:number;expected_first_call_md_id:number|null;expected_second_call_md_id:number|null}, token?:string) {
+ const response = await fetchApi('/api/v1/schedules/manual/day',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
+ const data = await response.json().catch(()=>null);
+ if(!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : 'This day could not be saved. Your selections are still here; please try again.');
+ return data;
 }

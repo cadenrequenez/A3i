@@ -28,7 +28,8 @@ export default function DashboardPage() {
   </aside>
   <main id="workspace-content" className="workspace-main" tabIndex={-1}>
    {profile?.display_name && <div className="px-7 pt-5 text-sm text-slate-600">Welcome, <strong>{profile.display_name}</strong>{profile.title ? ` · ${profile.title}` : ""}</div>}
-   {activeTab==="Schedule"?<ScheduleBoard/>:<div className="workspace-section"><p className="eyebrow">A3i workspace</p><h1 className="section-title">{activeTab === "Analytics" ? "Team workload" : activeTab === "Sites" ? "Your facilities" : "Your team"}</h1>{activeTab==="Staff"?<StaffList/>:activeTab==="Sites"?<SitesList/>:<AnalyticsPanel/>}</div>}
+   <div hidden={activeTab!=="Schedule"}><ScheduleBoard/></div>
+   {activeTab!=="Schedule"&&<div className="workspace-section"><p className="eyebrow">A3i workspace</p><h1 className="section-title">{activeTab === "Analytics" ? "Team workload" : activeTab === "Sites" ? "Your facilities" : "Your team"}</h1>{activeTab==="Staff"?<StaffList/>:activeTab==="Sites"?<SitesList/>:<AnalyticsPanel/>}</div>}
   </main>
  </div>;
 }

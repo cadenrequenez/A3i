@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app import crud, models, schemas
 from app.core.ai import request_schedule_suggestions
 from app.core.audit import log_ai_suggestion_event
@@ -834,3 +835,36 @@ def ai_suggest_fixes_route(
         baseline_violations=baseline_violations,
         baseline_score=baseline_score,
     )
+
+
+@router.put("/manual/day", response_model=schemas.ScheduleOut)
+def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    facility = db.query(models.Facility).filter_by(id=data.facility_id).first()
+    if not facility or facility.site_name != "Rio Grande Regional Hospital":
+        raise HTTPException(status_code=400, detail="Select the Rio Grande call schedule.")
+    ids = [data.first_call_md_id, data.second_call_md_id]
+    if ids[0] == ids[1]:
+        raise HTTPException(status_code=422, detail="Choose two different doctors for first and second call.")
+    doctors = db.query(models.MD).filter(models.MD.id.in_(ids), models.MD.active.is_(True)).all()
+    if len(doctors) != 2:
+        raise HTTPException(status_code=422, detail="Choose two active doctors from the roster.")
+    # Serialize concurrent creates for the same facility/day, including an empty day.
+    db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": data.date.toordinal()})
+    rows = db.query(models.Schedule).filter_by(facility_id=data.facility_id, date=data.date).with_for_update().all()
+    if len(rows) > 1:
+        raise HTTPException(status_code=409, detail="This day has duplicate saved records and needs review before editing.")
+    row = rows[0] if rows else None
+    current = (row.call_assignments or {}) if row else {}
+    current_pair = (current.get("first_call_md_id"), current.get("second_call_md_id"))
+    expected = (data.expected_first_call_md_id, data.expected_second_call_md_id)
+    requested = tuple(ids)
+    if current_pair != expected and current_pair != requested:
+        raise HTTPException(status_code=409, detail="This day changed since you opened it. Refresh to review the latest assignments before saving.")
+    if row is None:
+        row = models.Schedule(date=data.date, facility_id=data.facility_id, crna_ids=[])
+        db.add(row)
+    row.md_ids = ids
+    row.call_assignments = {**current, "first_call_md_id": ids[0], "second_call_md_id": ids[1]}
+    db.commit()
+    db.refresh(row)
+    return row

@@ -250,3 +250,12 @@ class UserOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ManualCallDay(BaseModel):
+    date: Date
+    facility_id: int
+    first_call_md_id: int
+    second_call_md_id: int
+    expected_first_call_md_id: int | None = None
+    expected_second_call_md_id: int | None = None
