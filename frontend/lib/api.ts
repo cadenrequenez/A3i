@@ -194,3 +194,15 @@ export async function saveManualCallDay(payload: {date:string;facility_id:number
  if(!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : 'This day could not be saved. Your selections are still here; please try again.');
  return data;
 }
+
+export async function hasMonthBackup(facility: number, year: number, month: number, token?: string): Promise<boolean> {
+ const response = await fetchApi(`/api/v1/schedules/manual/month-backup?facility_id=${facility}&year=${year}&month=${month}`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+ if(!response.ok) throw new Error('Unable to check the saved previous version.');
+ return (await response.json()).available;
+}
+export async function changeManualMonth(action: 'blank'|'restore', facility: number, year: number, month: number, token?: string) {
+ const response = await fetchApi(`/api/v1/schedules/manual/${action==='blank'?'blank-month':'restore-month'}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({facility_id:facility,year,month})});
+ const result = await response.json();
+ if(!response.ok) throw new Error(typeof result.detail==='string'?result.detail:'The month could not be changed. Please try again.');
+ return result;
+}

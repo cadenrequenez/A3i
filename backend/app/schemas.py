@@ -1,6 +1,6 @@
 from datetime import date as Date
 from typing import Any, Dict, List, Optional, Literal, Annotated
-from pydantic import BaseModel, StringConstraints, field_validator
+from pydantic import Field, BaseModel, StringConstraints, field_validator
 
 
 StaffName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
@@ -259,3 +259,9 @@ class ManualCallDay(BaseModel):
     second_call_md_id: int
     expected_first_call_md_id: int | None = None
     expected_second_call_md_id: int | None = None
+
+
+class ManualMonthRequest(BaseModel):
+    facility_id: int
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)

@@ -10,7 +10,7 @@ import {
   generateSchedule,
   suggestScheduleFixes,
   updateSchedule,
-  saveManualCallDay
+  saveManualCallDay, hasMonthBackup, changeManualMonth
 } from "../lib/api";
 import { getRole, getToken } from "../lib/auth";
 
@@ -35,6 +35,9 @@ export default function ScheduleBoard() {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [month, setMonth] = useState(Number(todayIso.slice(5, 7)));
   const [year, setYear] = useState(Number(todayIso.slice(0, 4)));
+  const [monthAction, setMonthAction] = useState<"blank" | "restore" | null>(null);
+  const [backupAvailable, setBackupAvailable] = useState(false);
+  const [monthChanging, setMonthChanging] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving,setSaving] = useState(false);
@@ -50,6 +53,15 @@ export default function ScheduleBoard() {
   const [suggestions, setSuggestions] = useState<AIFixSuggestion[]>([]);
   const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
   const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBackupAvailable(false);
+    if (role === "admin" && rioFacilityId) hasMonthBackup(rioFacilityId, year, month, getToken())
+      .then(value => { if (!cancelled) setBackupAvailable(value); })
+      .catch(error => { if (!cancelled) setStatus((error as Error).message); });
+    return () => { cancelled = true; };
+  }, [year, month, rioFacilityId, role]);
 
   const loadSchedules = () => {
     const token = getToken();
@@ -197,7 +209,27 @@ export default function ScheduleBoard() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || saving) return;
     if (dirty && !window.confirm("Leave this day without saving your changes?")) return;
     setSelectedDate(date); setMonth(Number(date.slice(5,7))); setYear(Number(date.slice(0,4)));
-    setStatus(null);
+    setStatus(null); setMonthAction(null);
+  }
+  async function changeMonth(action: "blank" | "restore") {
+    if (!rioFacilityId || dirty || monthChanging) return;
+    setMonthChanging(true); setSaving(true); setStatus(null);
+    try {
+      const result = await changeManualMonth(action, rioFacilityId, year, month, getToken());
+      await loadSchedules(); setBackupAvailable(result.backup_available);
+      setSelectedDate(`${year}-${String(month).padStart(2,"0")}-01`); setView("month");
+      setStatus(action === "blank" ? "Your blank month is ready. Save each day as you go; unfinished days will stay blank." : "Previous version restored. Your other version is still available to restore.");
+    } catch(error) { setStatus((error as Error).message); }
+    finally { setSaving(false); setMonthChanging(false); setMonthAction(null); }
+  }
+  function goToUnfinishedDay() {
+    for (let day=1; day<=daysInMonth; day++) {
+      const value = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const calls = schedules.find(entry=>entry.date===value)?.callAssignments;
+      if (!calls?.first_call_md_id || !calls?.second_call_md_id || calls.first_call_md_id===calls.second_call_md_id) {
+        chooseDate(value); setView("day"); return;
+      }
+    }
   }
   async function saveCall(next = false){
     if(!editCallFirst||!editCallSecond||editCallFirst===editCallSecond){setStatus("Choose two different doctors before saving.");return;}
@@ -220,6 +252,15 @@ export default function ScheduleBoard() {
     <div className="schedule-body">
      <p className="mb-4 text-sm text-slate-600">Build your call schedule: choose a day, select two doctors, and save. Saved days can be edited anytime. You do not need to generate a month first.</p>
      <p className="mb-4 text-sm font-semibold" aria-live="polite">{loading?"Checking saved days…":`${completeDays} of ${daysInMonth} days fully assigned and saved · ${completeDays===daysInMonth?"All days filled — ready for your review":`${daysInMonth-completeDays} days left to fill`}`}{dirty && " · Current edits are not saved"}</p>
+     {role==="admin" && <div className="flex flex-wrap gap-2 mb-4">
+       <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty||backupAvailable} onClick={()=>setMonthAction("blank")}>{monthChanging?"Updating month…":"Start blank month"}</button>
+       <button className="primary-button" disabled={loading||saving||completeDays===daysInMonth} onClick={goToUnfinishedDay}>Go to next unfinished day</button>
+       {backupAvailable && <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty} onClick={()=>setMonthAction("restore")}>Restore previous version</button>}
+     </div>}
+     {monthAction && <section className="status-message" aria-label="Confirm month change">
+       <p>{monthAction==="blank"?`Start ${monthLabel} blank? Your current call assignments will be kept as a previous version you can restore.`:`Restore the previous version of ${monthLabel}? Your current work will be kept so you can switch back.`}</p>
+       <div className="flex gap-2 mt-3"><button className="primary-button" disabled={saving||dirty} onClick={()=>changeMonth(monthAction)}>{monthAction==="blank"?"Keep a copy and start blank":"Restore and keep current version"}</button><button className="secondary-button" disabled={saving} onClick={()=>setMonthAction(null)}>Cancel</button></div>
+     </section>}
      {status && <p role="status" className="status-message">{status}</p>}
      {loading && <p role="status" className="status-message">Loading your saved schedule…</p>}
      <div className={`schedule-layout ${view==="day"?"day-view":""}`}>
@@ -227,7 +268,7 @@ export default function ScheduleBoard() {
       </div>
       <aside className="schedule-detail" aria-label="Selected day">
        <section className="detail-card"><p className="eyebrow">Selected day</p><h2>{selectedLabel}</h2><label className="field-label" htmlFor="schedule-date">Go to date</label><input id="schedule-date" type="date" value={selectedDate} disabled={saving} onChange={e=>chooseDate(e.target.value)}/>
-        {daySchedules.length===0&&<p className="empty-note">This day is ready to fill in. Choose first and second call below.</p>}<><label className="field-label" htmlFor="first-call">First-call doctor</label><select id="first-call" disabled={role!=="admin"||saving||loading} value={editCallFirst??""} onChange={e=>setEditCallFirst(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select><label className="field-label" htmlFor="second-call">Second-call doctor</label><select id="second-call" disabled={role!=="admin"||saving||loading} value={editCallSecond??""} onChange={e=>setEditCallSecond(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select>{role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":daySchedules.length?"Saved assignments":"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||!editCallFirst||!editCallSecond} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||!editCallFirst||!editCallSecond} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}</>
+        {(!savedFirst&&!savedSecond)&&<p className="empty-note">This day is ready to fill in. Choose first and second call below.</p>}<><label className="field-label" htmlFor="first-call">First-call doctor</label><select id="first-call" disabled={role!=="admin"||saving||loading} value={editCallFirst??""} onChange={e=>setEditCallFirst(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select><label className="field-label" htmlFor="second-call">Second-call doctor</label><select id="second-call" disabled={role!=="admin"||saving||loading} value={editCallSecond??""} onChange={e=>setEditCallSecond(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select>{role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":savedFirst&&savedSecond?"Saved assignments":"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||!editCallFirst||!editCallSecond} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||!editCallFirst||!editCallSecond} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}</>
        </section>
        {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
       </aside>

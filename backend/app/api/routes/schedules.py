@@ -861,3 +861,66 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
     db.commit()
     db.refresh(row)
     return row
+
+
+def _manual_month_rows(data, db):
+    facility = db.get(models.Facility, data.facility_id)
+    if not facility or facility.site_name != "Rio Grande Regional Hospital":
+        raise HTTPException(400, "Select the Rio Grande call schedule.")
+    start, end = _month_bounds(data.year, data.month)
+    day = start
+    while day <= end:
+        db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": day.toordinal()})
+        day += timedelta(days=1)
+    rows = db.query(models.Schedule).filter(models.Schedule.facility_id == data.facility_id, models.Schedule.date >= start, models.Schedule.date <= end).with_for_update().all()
+    if len({row.date for row in rows}) != len(rows):
+        raise HTTPException(409, "Duplicate days need review before starting a blank month.")
+    return rows
+
+
+def _month_snapshot(rows):
+    return [{"date": row.date.isoformat(), "md_ids": row.md_ids, "call_assignments": row.call_assignments} for row in rows]
+
+
+@router.get("/manual/month-backup")
+def manual_month_backup(facility_id: int, year: int, month: int, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=facility_id, year=year, month=month).first()
+    return {"available": backup is not None}
+
+
+@router.post("/manual/blank-month")
+def start_blank_month(data: schemas.ManualMonthRequest, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    rows = _manual_month_rows(data, db)
+    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=data.facility_id, year=data.year, month=data.month).first()
+    if backup:
+        raise HTTPException(409, "A previous version is already saved. Continue filling this month or restore the previous version.")
+    if rows:
+        db.add(models.ScheduleMonthBackup(facility_id=data.facility_id, year=data.year, month=data.month, entries=_month_snapshot(rows)))
+        for row in rows:
+            row.md_ids = []
+            row.call_assignments = {}
+    db.commit()
+    return {"backup_available": bool(rows)}
+
+
+@router.post("/manual/restore-month")
+def restore_manual_month(data: schemas.ManualMonthRequest, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    rows = _manual_month_rows(data, db)
+    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=data.facility_id, year=data.year, month=data.month).with_for_update().first()
+    if not backup:
+        raise HTTPException(404, "No previous version is saved for this month.")
+    current = _month_snapshot(rows)
+    previous = {entry["date"]: entry for entry in backup.entries}
+    by_date = {row.date.isoformat(): row for row in rows}
+    for day in set(previous) | set(by_date):
+        row = by_date.get(day)
+        if row is None:
+            row = models.Schedule(date=date.fromisoformat(day), facility_id=data.facility_id, crna_ids=[])
+            db.add(row)
+        entry = previous.get(day, {})
+        row.md_ids = entry.get("md_ids", [])
+        row.call_assignments = entry.get("call_assignments", {})
+    # Swap versions, so restoring never discards the work done since starting blank.
+    backup.entries = current
+    db.commit()
+    return {"backup_available": True}

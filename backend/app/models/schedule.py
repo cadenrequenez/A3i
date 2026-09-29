@@ -15,3 +15,14 @@ class Schedule(Base):
     call_assignments = Column(JSONB, nullable=False, default=dict)
 
     facility = relationship("Facility")
+
+
+class ScheduleMonthBackup(Base):
+    __tablename__ = "schedule_month_backups"
+    from sqlalchemy import UniqueConstraint
+    __table_args__ = (UniqueConstraint("facility_id", "year", "month"),)
+    id = Column(Integer, primary_key=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    entries = Column(JSONB, nullable=False)
