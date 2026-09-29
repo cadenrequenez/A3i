@@ -7,6 +7,7 @@ from app.db.base import Base
 class Schedule(Base):
     __tablename__ = "schedules"
 
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
@@ -20,7 +21,8 @@ class Schedule(Base):
 class ScheduleMonthBackup(Base):
     __tablename__ = "schedule_month_backups"
     from sqlalchemy import UniqueConstraint
-    __table_args__ = (UniqueConstraint("facility_id", "year", "month"),)
+    __table_args__ = (UniqueConstraint("owner_id", "facility_id", "year", "month", name="uq_month_backup_owner"),)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     id = Column(Integer, primary_key=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
     year = Column(Integer, nullable=False)

@@ -6,15 +6,16 @@ from app.tests.utils import create_user, get_auth_headers
 def test_blank_month_and_restore_preserve_both_versions(client, db_session):
     create_user(db_session, 'owner', 'secret', 'admin')
     create_user(db_session, 'viewer', 'secret', 'read-only')
+    owner_id = db_session.query(models.User).filter_by(username='owner').one().id
     headers = get_auth_headers(client, 'owner', 'secret')
     site = models.Facility(site_name='Rio Grande Regional Hospital')
     other = models.Facility(site_name='Other site')
     doctors = [models.MD(name=f'Doctor {i}', active=True) for i in range(3)]
     db_session.add_all([site, other, *doctors]); db_session.commit()
     a, b, c = [p.id for p in doctors]
-    original = models.Schedule(date=date(2026,11,1), facility_id=site.id, md_ids=[a,b], crna_ids=[123], call_assignments={'first_call_md_id':a,'second_call_md_id':b})
-    untouched = models.Schedule(date=date(2026,11,1), facility_id=other.id, md_ids=[a,b], call_assignments={})
-    december = models.Schedule(date=date(2026,12,1), facility_id=site.id, md_ids=[a,b], call_assignments={})
+    original = models.Schedule(owner_id=owner_id, date=date(2026,11,1), facility_id=site.id, md_ids=[a,b], crna_ids=[123], call_assignments={'first_call_md_id':a,'second_call_md_id':b})
+    untouched = models.Schedule(owner_id=owner_id, date=date(2026,11,1), facility_id=other.id, md_ids=[a,b], call_assignments={})
+    december = models.Schedule(owner_id=owner_id, date=date(2026,12,1), facility_id=site.id, md_ids=[a,b], call_assignments={})
     db_session.add_all([original, untouched, december]); db_session.commit()
     payload = {'facility_id':site.id,'year':2026,'month':11}
     base = '/api/v1/schedules/manual/'

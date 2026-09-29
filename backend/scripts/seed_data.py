@@ -117,7 +117,8 @@ def seed_staff(db):
 
 
 def seed_schedules(db, facilities):
-    if db.query(models.Schedule).count() > 0:
+    owner = db.query(models.User).filter_by(username="admin").one()
+    if db.query(models.Schedule).filter_by(owner_id=owner.id).count() > 0:
         return
 
     md_staff = [
@@ -150,6 +151,7 @@ def seed_schedules(db, facilities):
     for entry in schedule:
         db.add(
             models.Schedule(
+                owner_id=owner.id,
                 date=entry["date"],
                 facility_id=facility_lookup[entry["facility"]],
                 md_ids=entry["md_ids"],

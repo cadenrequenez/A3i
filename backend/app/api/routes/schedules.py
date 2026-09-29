@@ -73,6 +73,7 @@ def _load_assignments(
     facility_id: int | None,
     range_start: date,
     range_end: date,
+    owner_id: int,
     payload_schedule: list[schemas.ScheduleAssignment] | None = None,
 ) -> list[dict]:
     if payload_schedule:
@@ -86,6 +87,7 @@ def _load_assignments(
         ]
 
     query = db.query(models.Schedule).filter(
+        models.Schedule.owner_id == owner_id,
         models.Schedule.date >= range_start,
         models.Schedule.date <= range_end,
     )
@@ -450,19 +452,19 @@ def create_schedule(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    return crud.create_schedule(db, data)
+    return crud.create_schedule(db, data, _user.id)
 
 
 @router.get("/", response_model=list[schemas.ScheduleOut])
 def list_schedules(db: Session = Depends(get_db), _user=Depends(get_current_user)):
-    return db.query(models.Schedule).all()
+    return db.query(models.Schedule).filter_by(owner_id=_user.id).all()
 
 
 @router.get("/{schedule_id}", response_model=schemas.ScheduleOut)
 def get_schedule(
     schedule_id: int, db: Session = Depends(get_db), _user=Depends(get_current_user)
 ):
-    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id).first()
+    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id, models.Schedule.owner_id == _user.id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return schedule
@@ -475,7 +477,7 @@ def update_schedule(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id).first()
+    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id, models.Schedule.owner_id == _user.id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return crud.update_schedule(db, schedule, data)
@@ -487,7 +489,7 @@ def delete_schedule(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id).first()
+    schedule = db.query(models.Schedule).filter(models.Schedule.id == schedule_id, models.Schedule.owner_id == _user.id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     db.delete(schedule)
@@ -562,6 +564,7 @@ def generate_schedule(
 
     if data.overwrite:
         db.query(models.Schedule).filter(
+            models.Schedule.owner_id == _user.id,
             models.Schedule.date >= start_date,
             models.Schedule.date <= end_date,
         ).delete()
@@ -571,6 +574,7 @@ def generate_schedule(
         existing_pairs = {
             (schedule.date, schedule.facility_id)
             for schedule in db.query(models.Schedule).filter(
+                models.Schedule.owner_id == _user.id,
                 models.Schedule.date >= start_date,
                 models.Schedule.date <= end_date,
             )
@@ -585,6 +589,7 @@ def generate_schedule(
             continue
         db.add(
             models.Schedule(
+                owner_id=_user.id,
                 date=entry["date"],
                 facility_id=facility_id,
                 md_ids=entry["md_ids"],
@@ -615,6 +620,7 @@ def validate_schedule_route(
         facility_id=data.facility_id,
         range_start=range_start,
         range_end=range_end,
+        owner_id=_user.id,
         payload_schedule=data.schedule,
     )
     violations = validate_schedule(
@@ -643,6 +649,7 @@ def score_schedule_route(
         facility_id=data.facility_id,
         range_start=range_start,
         range_end=range_end,
+        owner_id=_user.id,
         payload_schedule=data.schedule,
     )
     score_data = score_schedule(
@@ -669,6 +676,7 @@ def ai_suggest_fixes_route(
     md_name_lookup, cv_qualified_ids, md_availability_lookup = _md_lookups(db)
     base_assignments = _load_assignments(
         db,
+        owner_id=user.id,
         facility_id=data.facility_id,
         range_start=range_start,
         range_end=range_end,
@@ -843,7 +851,7 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
         raise HTTPException(status_code=422, detail="Choose two active doctors from the roster.")
     # Serialize concurrent creates for the same facility/day, including an empty day.
     db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": data.date.toordinal()})
-    rows = db.query(models.Schedule).filter_by(facility_id=data.facility_id, date=data.date).with_for_update().all()
+    rows = db.query(models.Schedule).filter_by(owner_id=_user.id, facility_id=data.facility_id, date=data.date).with_for_update().all()
     if len(rows) > 1:
         raise HTTPException(status_code=409, detail="This day has duplicate saved records and needs review before editing.")
     row = rows[0] if rows else None
@@ -854,7 +862,7 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
     if current_pair != expected and current_pair != requested:
         raise HTTPException(status_code=409, detail="This day changed since you opened it. Refresh to review the latest assignments before saving.")
     if row is None:
-        row = models.Schedule(date=data.date, facility_id=data.facility_id, crna_ids=[])
+        row = models.Schedule(owner_id=_user.id, date=data.date, facility_id=data.facility_id, crna_ids=[])
         db.add(row)
     row.md_ids = ids
     row.call_assignments = {**current, "first_call_md_id": ids[0], "second_call_md_id": ids[1]}
@@ -863,7 +871,7 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
     return row
 
 
-def _manual_month_rows(data, db):
+def _manual_month_rows(data, db, owner_id):
     facility = db.get(models.Facility, data.facility_id)
     if not facility or facility.site_name != "Rio Grande Regional Hospital":
         raise HTTPException(400, "Select the Rio Grande call schedule.")
@@ -872,7 +880,7 @@ def _manual_month_rows(data, db):
     while day <= end:
         db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": day.toordinal()})
         day += timedelta(days=1)
-    rows = db.query(models.Schedule).filter(models.Schedule.facility_id == data.facility_id, models.Schedule.date >= start, models.Schedule.date <= end).with_for_update().all()
+    rows = db.query(models.Schedule).filter(models.Schedule.owner_id == owner_id, models.Schedule.facility_id == data.facility_id, models.Schedule.date >= start, models.Schedule.date <= end).with_for_update().all()
     if len({row.date for row in rows}) != len(rows):
         raise HTTPException(409, "Duplicate days need review before starting a blank month.")
     return rows
@@ -884,18 +892,18 @@ def _month_snapshot(rows):
 
 @router.get("/manual/month-backup")
 def manual_month_backup(facility_id: int, year: int, month: int, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
-    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=facility_id, year=year, month=month).first()
+    backup = db.query(models.ScheduleMonthBackup).filter_by(owner_id=_user.id, facility_id=facility_id, year=year, month=month).first()
     return {"available": backup is not None}
 
 
 @router.post("/manual/blank-month")
 def start_blank_month(data: schemas.ManualMonthRequest, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
-    rows = _manual_month_rows(data, db)
-    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=data.facility_id, year=data.year, month=data.month).first()
+    rows = _manual_month_rows(data, db, _user.id)
+    backup = db.query(models.ScheduleMonthBackup).filter_by(owner_id=_user.id, facility_id=data.facility_id, year=data.year, month=data.month).first()
     if backup:
         raise HTTPException(409, "A previous version is already saved. Continue filling this month or restore the previous version.")
     if rows:
-        db.add(models.ScheduleMonthBackup(facility_id=data.facility_id, year=data.year, month=data.month, entries=_month_snapshot(rows)))
+        db.add(models.ScheduleMonthBackup(owner_id=_user.id, facility_id=data.facility_id, year=data.year, month=data.month, entries=_month_snapshot(rows)))
         for row in rows:
             row.md_ids = []
             row.call_assignments = {}
@@ -905,8 +913,8 @@ def start_blank_month(data: schemas.ManualMonthRequest, db: Session = Depends(ge
 
 @router.post("/manual/restore-month")
 def restore_manual_month(data: schemas.ManualMonthRequest, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
-    rows = _manual_month_rows(data, db)
-    backup = db.query(models.ScheduleMonthBackup).filter_by(facility_id=data.facility_id, year=data.year, month=data.month).with_for_update().first()
+    rows = _manual_month_rows(data, db, _user.id)
+    backup = db.query(models.ScheduleMonthBackup).filter_by(owner_id=_user.id, facility_id=data.facility_id, year=data.year, month=data.month).with_for_update().first()
     if not backup:
         raise HTTPException(404, "No previous version is saved for this month.")
     current = _month_snapshot(rows)
@@ -915,7 +923,7 @@ def restore_manual_month(data: schemas.ManualMonthRequest, db: Session = Depends
     for day in set(previous) | set(by_date):
         row = by_date.get(day)
         if row is None:
-            row = models.Schedule(date=date.fromisoformat(day), facility_id=data.facility_id, crna_ids=[])
+            row = models.Schedule(owner_id=_user.id, date=date.fromisoformat(day), facility_id=data.facility_id, crna_ids=[])
             db.add(row)
         entry = previous.get(day, {})
         row.md_ids = entry.get("md_ids", [])

@@ -55,8 +55,8 @@ def update_facility(db: Session, facility: models.Facility, data: schemas.Facili
     return facility
 
 
-def create_schedule(db: Session, data: schemas.ScheduleCreate) -> models.Schedule:
-    schedule = models.Schedule(**data.dict())
+def create_schedule(db: Session, data: schemas.ScheduleCreate, owner_id: int) -> models.Schedule:
+    schedule = models.Schedule(**data.dict(), owner_id=owner_id)
     db.add(schedule)
     db.commit()
     db.refresh(schedule)

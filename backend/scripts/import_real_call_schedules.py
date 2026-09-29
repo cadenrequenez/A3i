@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from typing import Dict, List, Tuple
 
@@ -132,6 +133,8 @@ def build_entries(month: int, year: int, mapping: Dict[int, Tuple[str, str]]) ->
 
 
 def import_entries(db, facility: models.Facility, entries: List[dict]) -> None:
+    username = os.environ["SCHEDULE_OWNER_USERNAME"]
+    owner = db.query(models.User).filter_by(username=username).one()
     name_to_id = {}
     for entry in entries:
         for name in (entry["first"], entry["second"]):
@@ -141,7 +144,7 @@ def import_entries(db, facility: models.Facility, entries: List[dict]) -> None:
     existing = {
         (s.date, s.facility_id): s
         for s in db.query(models.Schedule)
-        .filter(models.Schedule.facility_id == facility.id)
+        .filter(models.Schedule.facility_id == facility.id, models.Schedule.owner_id == owner.id)
         .filter(models.Schedule.date.in_([e["date"] for e in entries]))
         .all()
     }
@@ -161,6 +164,7 @@ def import_entries(db, facility: models.Facility, entries: List[dict]) -> None:
         else:
             db.add(
                 models.Schedule(
+                    owner_id=owner.id,
                     date=entry["date"],
                     facility_id=facility.id,
                     md_ids=md_ids,

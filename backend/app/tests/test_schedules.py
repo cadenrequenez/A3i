@@ -65,6 +65,7 @@ def test_schedule_validate_and_score_endpoints(client, db_session):
     for day in (6, 7, 8):
         db_session.add(
             models.Schedule(
+                owner_id=db_session.query(models.User).filter_by(username="admin2").one().id,
                 date=date(2026, 2, day),
                 facility_id=facility.id,
                 md_ids=[cv_md.id, non_cv_md.id],
