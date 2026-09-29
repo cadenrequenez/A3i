@@ -177,6 +177,13 @@ export default function ScheduleBoard() {
     try {await generateSchedule(year,month,overwrite,getToken());await loadSchedules();setStatus(`Schedule generated for ${monthLabel}.`);}
     catch(error){setStatus((error as Error).message);}finally{setGenerating(false);}
   }
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const completeDays = new Set(schedules.filter(entry => {
+    const calls = entry.callAssignments;
+    return entry.date.startsWith(`${year}-${String(month).padStart(2,"0")}-`) &&
+      calls?.first_call_md_id && calls?.second_call_md_id &&
+      calls.first_call_md_id !== calls.second_call_md_id;
+  }).map(entry => entry.date)).size;
   const savedFirst = daySchedules[0]?.callAssignments?.first_call_md_id ?? null;
   const savedSecond = daySchedules[0]?.callAssignments?.second_call_md_id ?? null;
   const dirty = editCallFirst !== savedFirst || editCallSecond !== savedSecond;
@@ -211,8 +218,8 @@ export default function ScheduleBoard() {
      </div>
     </header>
     <div className="schedule-body">
-     <p className="mb-4 text-sm text-slate-600">Build your call schedule: choose a day, select two doctors, and save. Saved days can be edited anytime.</p>
-     <p className="mb-4 text-sm font-semibold">{new Set(schedules.filter(entry=>entry.date.startsWith(`${year}-${String(month).padStart(2,"0")}-`)).map(entry=>entry.date)).size} of {new Date(year,month,0).getDate()} days saved</p>
+     <p className="mb-4 text-sm text-slate-600">Build your call schedule: choose a day, select two doctors, and save. Saved days can be edited anytime. You do not need to generate a month first.</p>
+     <p className="mb-4 text-sm font-semibold" aria-live="polite">{loading?"Checking saved days…":`${completeDays} of ${daysInMonth} days fully assigned and saved · ${completeDays===daysInMonth?"All days filled — ready for your review":`${daysInMonth-completeDays} days left to fill`}`}{dirty && " · Current edits are not saved"}</p>
      {status && <p role="status" className="status-message">{status}</p>}
      {loading && <p role="status" className="status-message">Loading your saved schedule…</p>}
      <div className={`schedule-layout ${view==="day"?"day-view":""}`}>

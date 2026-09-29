@@ -16,7 +16,6 @@ from app.scheduling.rules import (
 )
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
-EXCLUDED_SUGGESTION_MD_NAMES = {"tim castro"}
 WEEKEND_CAP_MD_NAMES = {"edward requenez", "ed requenez", "daniel requenez", "dan requenez"}
 
 
@@ -111,13 +110,7 @@ def _md_lookups(db: Session) -> tuple[dict[int, str], set[int], dict[int, dict]]
     md_name_lookup = {row.id: (row.availability or {}).get("scheduling_name", row.name) for row in md_rows}
     cv_qualified_ids = {row.id for row in md_rows if row.cv_qualified}
     md_availability_lookup = {row.id: (row.availability or {}) for row in md_rows}
-    md_name_lookup = {
-        md_id: name
-        for md_id, name in md_name_lookup.items()
-        if name.strip().lower() not in EXCLUDED_SUGGESTION_MD_NAMES
-    }
-    cv_qualified_ids = {md_id for md_id in cv_qualified_ids if md_id in md_name_lookup}
-    md_availability_lookup = {md_id: md_availability_lookup.get(md_id, {}) for md_id in md_name_lookup}
+    # Use the same active roster and qualifications as generation.
     return md_name_lookup, cv_qualified_ids, md_availability_lookup
 
 
