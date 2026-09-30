@@ -28,3 +28,13 @@ class ScheduleMonthBackup(Base):
     year = Column(Integer, nullable=False)
     month = Column(Integer, nullable=False)
     entries = Column(JSONB, nullable=False)
+
+
+class ScheduleTimeOff(Base):
+    __tablename__ = "schedule_time_off"
+    id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
+    md_id = Column(Integer, ForeignKey("mds.id"), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
