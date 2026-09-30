@@ -255,8 +255,8 @@ class UserOut(BaseModel):
 class ManualCallDay(BaseModel):
     date: Date
     facility_id: int
-    first_call_md_id: int
-    second_call_md_id: int
+    first_call_md_id: int | None = None
+    second_call_md_id: int | None = None
     expected_first_call_md_id: int | None = None
     expected_second_call_md_id: int | None = None
 
@@ -265,3 +265,15 @@ class ManualMonthRequest(BaseModel):
     facility_id: int
     year: int = Field(ge=2000, le=2100)
     month: int = Field(ge=1, le=12)
+
+
+class TimeOffCreate(BaseModel):
+    facility_id: int
+    md_id: int
+    start_date: Date
+    end_date: Date
+
+class TimeOffOut(TimeOffCreate):
+    id: int
+    class Config:
+        from_attributes = True
