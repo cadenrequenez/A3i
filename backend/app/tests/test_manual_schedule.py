@@ -33,3 +33,34 @@ def test_manual_rejects_invalid_assignments_without_writes(client,db_session):
     for second in (active.id,inactive.id,999999):
         assert client.put('/api/v1/schedules/manual/day',headers=h,json={**p,'second_call_md_id':second}).status_code==422
     assert db_session.query(models.Schedule).count()==0
+
+def test_partial_days_can_be_resumed_and_cleared(client,db_session):
+    create_user(db_session,'owner','secret','admin');h=get_auth_headers(client,'owner','secret')
+    site=models.Facility(site_name='Rio Grande Regional Hospital');md=models.MD(name='Doctor',active=True)
+    db_session.add_all([site,md]);db_session.commit()
+    url='/api/v1/schedules/manual/day';p={'date':'2026-10-01','facility_id':site.id}
+    previous=(None,None)
+    for pair in [(md.id,None),(None,md.id),(None,None)]:
+        result=client.put(url,headers=h,json={**p,'first_call_md_id':pair[0],'second_call_md_id':pair[1],'expected_first_call_md_id':previous[0],'expected_second_call_md_id':previous[1]})
+        assert result.status_code==200,result.text
+        data=result.json();assert data['md_ids']==[x for x in pair if x is not None]
+        assert (data['call_assignments']['first_call_md_id'],data['call_assignments']['second_call_md_id'])==pair
+        previous=pair
+    assert db_session.query(models.Schedule).count()==1
+
+
+def test_time_off_is_owned_and_survives_blank_month(client,db_session):
+    create_user(db_session,'owner','secret','admin');create_user(db_session,'other','secret','admin')
+    h=get_auth_headers(client,'owner','secret');other=get_auth_headers(client,'other','secret')
+    site=models.Facility(site_name='Rio Grande Regional Hospital');md=models.MD(name='Doctor')
+    db_session.add_all([site,md]);db_session.commit()
+    url='/api/v1/schedules/manual/time-off';p={'facility_id':site.id,'md_id':md.id,'start_date':'2026-10-30','end_date':'2026-11-02'}
+    result=client.post(url,headers=h,json=p);assert result.status_code==200,result.text
+    entry=result.json();assert client.post(url,headers=h,json=p).json()['id']==entry['id']
+    assert client.get(url,headers=other,params={'facility_id':site.id}).json()==[]
+    assert client.delete(f"{url}/{entry['id']}",headers=other).status_code==404
+    assert client.post(url,headers=h,json={**p,'end_date':'2026-10-01'}).status_code==422
+    assert client.post('/api/v1/schedules/manual/blank-month',headers=h,json={'facility_id':site.id,'year':2026,'month':10}).status_code==200
+    assert len(client.get(url,headers=h,params={'facility_id':site.id}).json())==1
+    assert client.delete(f"{url}/{entry['id']}",headers=h).status_code==200
+    assert client.get(url,headers=h,params={'facility_id':site.id}).json()==[]
