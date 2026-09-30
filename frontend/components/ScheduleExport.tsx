@@ -6,15 +6,15 @@ import type { ScheduleEntry } from "../lib/types";
 import { getToken } from "../lib/auth";
 import { scheduleWorkbook } from "../lib/scheduleWorkbook";
 
-type Props = {year:number;month:number;facility:string;schedules:ScheduleEntry[];disabled:boolean};
-export default function ScheduleExport({year,month,facility,schedules,disabled}:Props) {
+type Props = {offForDate?:(date:string)=>string[];year:number;month:number;facility:string;schedules:ScheduleEntry[];disabled:boolean};
+export default function ScheduleExport({offForDate=()=>[],year,month,facility,schedules,disabled}:Props) {
  const [open,setOpen]=useState(false);
  const label=new Date(year,month-1,1).toLocaleDateString(undefined,{month:"long",year:"numeric"});
  const prefix=`${year}-${String(month).padStart(2,"0")}`;
  const days=Array.from({length:new Date(year,month,0).getDate()},(_,i)=>{
   const date=`${prefix}-${String(i+1).padStart(2,"0")}`;
   const row=schedules.find(s=>s.date===date && s.facility===facility);
-  return {date,day:i+1,first:row?.callFirstName||"Unassigned",second:row?.callSecondName||"Unassigned"};
+  return {date,day:i+1,off:offForDate(date),first:row?.callFirstName||"Unassigned",second:row?.callSecondName||"Unassigned"};
  });
  const missing=days.filter(d=>d.first==="Unassigned"||d.second==="Unassigned").length;
  const leading=new Date(year,month-1,1).getDay();
@@ -32,7 +32,7 @@ export default function ScheduleExport({year,month,facility,schedules,disabled}:
  {open&&createPortal(<div className="schedule-export-overlay" role="dialog" aria-modal="true" aria-label="Monthly schedule print preview">
   <div className="schedule-export-actions"><button className="primary-button" onClick={()=>{getToken();window.print();}}>Print or save as PDF</button><button className="secondary-button" autoFocus onClick={()=>setOpen(false)}>Close preview</button><p>Choose Landscape and “Save as PDF” in the print dialog. Turn off headers and footers for a clean copy.</p></div>
   <article className="schedule-export-sheet"><header><div><p>A3i · {facility}</p><h1>{label}</h1><h2>First & second call schedule</h2></div><div><strong>{missing?`Work in progress · ${missing} unfinished days`:'All days assigned · Saved copy'}</strong><p>Exported {new Date().toLocaleDateString()}</p></div></header>
-   <table><thead><tr>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><th key={d}>{d}</th>)}</tr></thead><tbody>{weeks.map((week,i)=><tr key={i}>{week.map((day,j)=><td key={j} className={day?'':'empty'}>{day&&<><b>{day.day}</b><p><small>1st</small> {day.first}</p><p><small>2nd</small> {day.second}</p></>}</td>)}</tr>)}</tbody></table>
+   <table><thead><tr>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><th key={d}>{d}</th>)}</tr></thead><tbody>{weeks.map((week,i)=><tr key={i}>{week.map((day,j)=><td key={j} className={day?'':'empty'}>{day&&<><b>{day.day}</b><p><small>1st</small> {day.first}</p><p><small>2nd</small> {day.second}</p>{day.off.map(name=><p key={name}><small>OFF</small> {name}</p>)}</>}</td>)}</tr>)}</tbody></table>
    <footer>1st = first call · 2nd = second call. This is a snapshot of saved assignments; check A3i for subsequent changes.</footer>
   </article></div>,document.body)}
  </>;
