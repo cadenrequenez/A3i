@@ -4,19 +4,22 @@ import ScheduleBoard from "../components/ScheduleBoard";
 import StaffList from "../components/StaffList";
 import SitesList from "../components/SitesList";
 import AnalyticsPanel from "../components/AnalyticsPanel";
-import { getToken } from "../lib/auth";
+import { getToken, watchAccountSession } from "../lib/auth";
 import { API_BASE_URL } from "../lib/connection";
 import { fetchProfile, type AccountProfile } from "../lib/api";
 const TABS = ["Schedule", "Staff", "Sites", "Analytics"] as const;
 const icons = ["M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8m8 .13a4 4 0 0 1 0 7.75", "M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0ZM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6", "M4 19V9m8 10V4m8 15v-7M2 22h20"];
 export default function DashboardPage() {
+ useEffect(() => watchAccountSession(), []);
  const [activeTab,setActiveTab]=useState<(typeof TABS)[number]>("Schedule");
  const [profile,setProfile]=useState<AccountProfile|null>(null);
  useEffect(()=>{fetchProfile(getToken()).then(setProfile).catch(()=>{});},[]);
  const [signingOut,setSigningOut]=useState(false);
  async function signOut(){
+  let token: string | undefined;
+  try { token = getToken(); } catch { return; }
   setSigningOut(true);
-  try { await fetch(`${API_BASE_URL}/api/v1/auth/logout`,{method:"POST",headers:{Authorization:`Bearer ${getToken()}`},signal:AbortSignal.timeout(5000)}); } catch {}
+  try { await fetch(`${API_BASE_URL}/api/v1/auth/logout`,{method:"POST",headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(5000)}); } catch {}
   finally { localStorage.removeItem("a3i_token");localStorage.removeItem("a3i_role");document.cookie="a3i_token=; path=/; Max-Age=0";document.cookie="a3i_role=; path=/; Max-Age=0";window.location.assign("/login"); }
  }
  return <div className="workspace-shell">
