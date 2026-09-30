@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
 
 import { API_BASE_URL, signIn } from "../../lib/connection";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +16,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("session") === "expired") setError("Your session has expired. Please sign in again.");
+    if (new URLSearchParams(window.location.search).get("session") === "changed") setError("Your account changed in another tab. Sign in here to continue with the correct calendar.");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 90000);
     fetch(`${API_BASE_URL}/`, { signal: controller.signal, cache: "no-store" })
@@ -57,8 +56,7 @@ export default function LoginPage() {
       const cookieOptions = `path=/; SameSite=Lax; Max-Age=${Math.floor(payload.exp - Date.now() / 1000)}${window.location.protocol === "https:" ? "; Secure" : ""}`;
       document.cookie = `a3i_token=${token}; ${cookieOptions}`;
       document.cookie = `a3i_role=${payload.role}; ${cookieOptions}`;
-      router.replace("/");
-      router.refresh();
+      window.location.replace("/");
     } catch (err) {
       const message = (err as Error).name === "AbortError"
         ? "Login timed out. Please try again in a moment."
