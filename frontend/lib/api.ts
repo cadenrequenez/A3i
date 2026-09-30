@@ -188,7 +188,7 @@ export async function saveStaffing(site: Facility, md: number, crna: number, tok
  return response.json();
 }
 
-export async function saveManualCallDay(payload: {date:string;facility_id:number;first_call_md_id:number;second_call_md_id:number;expected_first_call_md_id:number|null;expected_second_call_md_id:number|null}, token?:string) {
+export async function saveManualCallDay(payload: {date:string;facility_id:number;first_call_md_id:number|null;second_call_md_id:number|null;expected_first_call_md_id:number|null;expected_second_call_md_id:number|null}, token?:string) {
  const response = await fetchApi('/api/v1/schedules/manual/day',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
  const data = await response.json().catch(()=>null);
  if(!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : 'This day could not be saved. Your selections are still here; please try again.');
@@ -205,4 +205,16 @@ export async function changeManualMonth(action: 'blank'|'restore', facility: num
  const result = await response.json();
  if(!response.ok) throw new Error(typeof result.detail==='string'?result.detail:'The month could not be changed. Please try again.');
  return result;
+}
+
+
+export type TimeOff = {id:number;facility_id:number;md_id:number;start_date:string;end_date:string};
+export async function timeOffRequest(facility:number, token:string|undefined, entry?:Omit<TimeOff,'id'>, removeId?:number):Promise<TimeOff[]|TimeOff> {
+ const path=removeId?`/manual/time-off/${removeId}`:'/manual/time-off';
+ const response=await fetchApi(`/api/v1/schedules${path}${!entry&&!removeId?`?facility_id=${facility}`:''}`,{method:removeId?'DELETE':entry?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},...(entry?{body:JSON.stringify(entry)}:{}),cache:'no-store'});
+ const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Unable to save time off. Please try again.');return result;
+}
+export async function addGuestMd(name:string,token?:string):Promise<StaffMember> {
+ const response=await fetchApi('/api/v1/mds/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({name,active:true,specialties:['Guest']})});
+ if(!response.ok)throw new Error('The doctor could not be added. Check the name and try again.');return response.json();
 }
