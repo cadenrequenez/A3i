@@ -844,11 +844,12 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
     if not facility or facility.site_name != "Rio Grande Regional Hospital":
         raise HTTPException(status_code=400, detail="Select the Rio Grande call schedule.")
     ids = [data.first_call_md_id, data.second_call_md_id]
-    if ids[0] == ids[1]:
+    if ids[0] is not None and ids[0] == ids[1]:
         raise HTTPException(status_code=422, detail="Choose two different doctors for first and second call.")
-    doctors = db.query(models.MD).filter(models.MD.id.in_(ids), models.MD.active.is_(True)).all()
-    if len(doctors) != 2:
-        raise HTTPException(status_code=422, detail="Choose two active doctors from the roster.")
+    assigned_ids = [md_id for md_id in ids if md_id is not None]
+    doctors = db.query(models.MD).filter(models.MD.id.in_(assigned_ids), models.MD.active.is_(True)).all()
+    if len(doctors) != len(assigned_ids):
+        raise HTTPException(status_code=422, detail="Choose active doctors from the roster.")
     # Serialize concurrent creates for the same facility/day, including an empty day.
     db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": data.date.toordinal()})
     rows = db.query(models.Schedule).filter_by(owner_id=_user.id, facility_id=data.facility_id, date=data.date).with_for_update().all()
@@ -864,7 +865,7 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
     if row is None:
         row = models.Schedule(owner_id=_user.id, date=data.date, facility_id=data.facility_id, crna_ids=[])
         db.add(row)
-    row.md_ids = ids
+    row.md_ids = assigned_ids
     row.call_assignments = {**current, "first_call_md_id": ids[0], "second_call_md_id": ids[1]}
     db.commit()
     db.refresh(row)
@@ -932,3 +933,37 @@ def restore_manual_month(data: schemas.ManualMonthRequest, db: Session = Depends
     backup.entries = current
     db.commit()
     return {"backup_available": True}
+
+
+@router.get("/manual/time-off", response_model=list[schemas.TimeOffOut])
+def list_time_off(facility_id: int, db: Session = Depends(get_db), _user=Depends(get_current_user)):
+    from app.models.schedule import ScheduleTimeOff
+    return db.query(ScheduleTimeOff).filter_by(owner_id=_user.id, facility_id=facility_id).order_by(ScheduleTimeOff.start_date, ScheduleTimeOff.id).all()
+
+
+@router.post("/manual/time-off", response_model=schemas.TimeOffOut)
+def add_time_off(data: schemas.TimeOffCreate, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    from app.models.schedule import ScheduleTimeOff
+    if data.end_date < data.start_date or (data.end_date-data.start_date).days > 366:
+        raise HTTPException(422, "Choose an end date on or after the start, up to one year apart.")
+    if not db.get(models.Facility, data.facility_id) or not db.get(models.MD, data.md_id):
+        raise HTTPException(422, "Choose a doctor and facility from the roster.")
+    # Duplicate submissions are harmless, including retries after a slow connection.
+    row = db.query(ScheduleTimeOff).filter_by(owner_id=_user.id, **data.model_dump()).first()
+    if row is None:
+        row = ScheduleTimeOff(owner_id=_user.id, **data.model_dump())
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+@router.delete("/manual/time-off/{entry_id}")
+def remove_time_off(entry_id: int, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    from app.models.schedule import ScheduleTimeOff
+    row = db.query(ScheduleTimeOff).filter_by(id=entry_id, owner_id=_user.id).first()
+    if row is None:
+        raise HTTPException(404, "Time off not found.")
+    db.delete(row)
+    db.commit()
+    return {"status": "removed"}
