@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Calendar from "./Calendar";
+import ScheduleExport from "./ScheduleExport";
 import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
 import {
   fetchFacilities,
@@ -257,6 +258,7 @@ export default function ScheduleBoard() {
        <button className="primary-button" disabled={loading||saving||completeDays===daysInMonth} onClick={goToUnfinishedDay}>Go to next unfinished day</button>
        {backupAvailable && <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty} onClick={()=>setMonthAction("restore")}>Restore previous version</button>}
      </div>}
+     <ScheduleExport year={year} month={month} facility={RIO_FACILITY} schedules={hydratedSchedules} disabled={loading||saving||generating||isGeneratingYear||dirty}/>
      {monthAction && <section className="status-message" aria-label="Confirm month change">
        <p>{monthAction==="blank"?`Start ${monthLabel} blank? Your current call assignments will be kept as a previous version you can restore.`:`Restore the previous version of ${monthLabel}? Your current work will be kept so you can switch back.`}</p>
        <div className="flex gap-2 mt-3"><button className="primary-button" disabled={saving||dirty} onClick={()=>changeMonth(monthAction)}>{monthAction==="blank"?"Keep a copy and start blank":"Restore and keep current version"}</button><button className="secondary-button" disabled={saving} onClick={()=>setMonthAction(null)}>Cancel</button></div>
