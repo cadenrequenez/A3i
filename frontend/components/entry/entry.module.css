@@ -1,0 +1,144 @@
+@font-face {
+  font-family: "A3i Manrope";
+  src: url("/fonts/manrope-regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "A3i Manrope";
+  src: url("/fonts/manrope-medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "A3i Manrope";
+  src: url("/fonts/manrope-semibold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+.entry {
+  --entry-text: #edf3fb;
+  --entry-muted: #a8bad2;
+  --entry-line: #ffffff16;
+  --entry-edge: #a7c9f12b;
+  color-scheme: dark;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  color: var(--entry-text);
+  font: 400 15px/1.5 "A3i Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(ellipse 85% 60% at 50% -20%, #46699c44, transparent 80%), radial-gradient(ellipse 66% 45% at 50% 20%, #163a6860, transparent 82%), linear-gradient(135deg, #0b1f3a 0%, #07162c 44%, #091a33 72%, #061329 100%);
+  isolation: isolate;
+}
+.entry h1, .entry h2, .entry p { margin: 0; }
+.entry a { text-decoration: none; }
+.entry button, .entry input { font: inherit; }
+.entry :is(a, button, input):focus-visible { outline: 3px solid #8ab4ed; outline-offset: 4px; }
+.skipLink { position: absolute; top: -80px; left: 18px; z-index: 5; padding: 12px 16px; background: #edf3fb; color: #0b2141; border-radius: 5px; }
+.skipLink:focus { top: 12px; }
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 22px clamp(24px, 4vw, 64px);
+  border-bottom: 1px solid var(--entry-line);
+  background: linear-gradient(180deg, #9cc6ff06, transparent);
+}
+.identity { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; min-width: 0; color: inherit; }
+.brand { position: relative; display: block; overflow: hidden; flex-shrink: 0; width: 114px; height: 66px; }
+.brand img { position: absolute; width: 270px; height: 152px; max-width: none; left: -74px; top: -42px; object-fit: contain; mix-blend-mode: lighten; }
+.fullName { font-size: 11px; line-height: 1.65; letter-spacing: .015em; color: #b5c9e4; }
+.headerLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--entry-edge);
+  font-size: 12px;
+  color: #d2e0f2;
+  background: linear-gradient(160deg, #d5e8ff0d, #d5e8ff02);
+  box-shadow: inset 0 1px 0 #ffffff0a;
+}
+.headerLink svg { width: 14px; height: 14px; flex-shrink: 0; }
+.headerLink:hover, .primary:hover { filter: brightness(1.08); }
+.hero { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 68px 24px 70px; }
+.eyebrow { font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: #c1d5ef; display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.dot { width: 4px; height: 4px; background: #7eb4f5; border-radius: 50%; box-shadow: 0 0 10px #6398d975; flex-shrink: 0; }
+.hero h1 { font-size: clamp(38px, 5.2vw, 68px); line-height: 1.14; letter-spacing: -.047em; font-weight: 500; margin: 28px 0 23px; text-wrap: balance; }
+.hero h1 span { color: #8ab4ed; }
+.description { font-size: 17px; line-height: 1.85; color: var(--entry-muted); max-width: 510px; text-wrap: pretty; }
+.entry .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 50px;
+  background: linear-gradient(150deg, #ffffff, #dce8f8);
+  color: #0b2141;
+  border: 1px solid #e2efff;
+  border-radius: 5px;
+  box-shadow: 0 6px 20px #020b2333, inset 0 1px 0 #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 14px 22px;
+  margin-top: 32px;
+}
+.primary svg { width: 16px; height: 16px; flex-shrink: 0; }
+.capabilities { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 16px; color: #b2c8e4; font-size: 11px; letter-spacing: .015em; margin-top: 62px; }
+.capabilities b { font-weight: 400; color: #7995b8; }
+.footer { padding: 23px clamp(24px, 4vw, 64px); display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 11px; color: #91a9c7; border-top: 1px solid var(--entry-line); margin-top: auto; }
+.footer > span:first-child { font-size: 13px; color: #becfe6; letter-spacing: .1em; }
+.loginCenter { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px 60px; }
+.form { width: 100%; max-width: 390px; padding: 33px 31px 28px; border: 1px solid var(--entry-edge); border-top-color: #b0ceef43; border-radius: 9px; background: linear-gradient(160deg, #112a49, #0b1c35 65%, #0d213d); box-shadow: 0 22px 66px #020a1890, inset 0 1px 0 #c6e1ff0b; }
+.form .eyebrow { margin-bottom: 12px; }
+.form h1 { font-size: 26px; line-height: 1.3; letter-spacing: -.035em; font-weight: 500; }
+.formIntro { font-size: 13px; color: var(--entry-muted); margin: 9px 0 27px !important; }
+.form label { display: block; font-size: 12px; color: #c7d7ec; margin: 19px 0 8px; }
+.form input {
+  width: 100%;
+  min-width: 0;
+  font-size: 16px;
+  height: 48px;
+  padding: 11px 12px;
+  border-radius: 5px;
+  border: 1px solid #6d91bd38;
+  background: #08172e;
+  color: var(--entry-text);
+  box-shadow: inset 0 2px 5px #030b1b44;
+}
+.form input:disabled { opacity: .65; }
+.form input:-webkit-autofill { -webkit-text-fill-color: var(--entry-text); box-shadow: inset 0 0 0 1000px #08172e; caret-color: var(--entry-text); }
+.password { display: flex; align-items: stretch; border: 1px solid #6d91bd38; border-radius: 5px; background: #08172e; box-shadow: inset 0 2px 5px #030b1b44; }
+.password input { border: 0; background: transparent; box-shadow: none; }
+.password button { border: 0; border-radius: 0 5px 5px 0; background: transparent; font-size: 11px; color: #b4cbe7; padding: 10px 12px; flex-shrink: 0; min-width: 50px; }
+.password button:hover { color: #edf3fb; }
+.submit { width: 100%; margin-top: 26px; }
+.formNote { color: #9fb5d0; font-size: 11px; margin-top: 22px !important; text-align: center; }
+.error { font-size: 13px; line-height: 1.7; color: #ffbac5; margin-top: 18px !important; overflow-wrap: anywhere; }
+.status { font-size: 12px; line-height: 1.7; color: #bfd9fb; margin-top: 14px !important; }
+@media (max-width: 650px) {
+  .header { padding: 18px; gap: 12px; }
+  .brand { width: 94px; height: 55px; }
+  .brand img { width: 223px; height: 125px; left: -61px; top: -34px; }
+  .identity { gap: 7px; }
+  .fullName { line-height: 1.6; letter-spacing: 0; }
+  .headerLink { padding: 8px 12px; gap: 7px; font-size: 11px; max-width: 100px; flex-wrap: wrap; }
+  .hero { padding: 62px 23px; }
+  .hero h1 { font-size: 38px; line-height: 1.2; letter-spacing: -.04em; margin: 25px 0 23px; overflow-wrap: break-word; }
+  .eyebrow { letter-spacing: .1em; }
+  .description { font-size: 15px; line-height: 1.85; }
+  .capabilities { gap: 12px; margin-top: 53px; }
+  .capabilities b { display: none; }
+  .footer { padding: 23px 20px; }
+  .loginCenter { padding: 36px 20px 48px; }
+  .form { padding: 28px 22px 25px; }
+  .form h1 { font-size: 25px; }
+}

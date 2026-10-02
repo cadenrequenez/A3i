@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 export const metadata = {
-  title: "Sign in | A3i Scheduler",
-  description: "Sign in to manage anesthesia schedules with A3i."
+  title: "Sign in | A3i",
+  description: "Sign in to your A3i workspace. Anesthesia Administration & Artificial Intelligence."
 };
 
 export default function LoginLayout({ children }: { children: ReactNode }) {

@@ -5,6 +5,8 @@ import { decodeJwt } from "../../lib/jwt";
 import { setRole, setToken } from "../../lib/auth";
 
 import { API_BASE_URL, signIn } from "../../lib/connection";
+import EntryShell, { EntryArrow } from "../../components/entry/EntryShell";
+import styles from "../../components/entry/entry.module.css";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -72,61 +74,57 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="login-shell">
-      <section className="login-brand" aria-label="A3i scheduling">
-        <img src="/logos/a3i-dark.png" alt="A3i" className="login-logo" />
-        <div><p className="eyebrow">Anesthesia scheduling</p><h1>A clearer day<br />starts here.</h1><p>One place for your team,<br />your coverage, and the days ahead.</p></div>
-        <small>A3i · Built around your day</small>
-      </section>
-      <section className="login-form-wrap" aria-label="Sign in">
-      <form onSubmit={handleSubmit} className="login-card space-y-5">
-        <div className="mb-8"><h2 className="text-3xl font-semibold">Welcome back</h2><p className="mt-2 text-sm text-slate-600">Sign in to your scheduling workspace.</p></div>
-        <div className="space-y-2">
-          <label htmlFor="username" className="text-sm font-medium">Username</label>
+    <EntryShell page="signin">
+      <main id="entry-content" className={styles.loginCenter}>
+      <form onSubmit={handleSubmit} className={styles.form} aria-busy={isSubmitting} aria-labelledby="signin-title">
+        <p className={styles.eyebrow}>Your workspace</p>
+        <h1 id="signin-title">Sign in to A3i</h1>
+        <p className={styles.formIntro}>Welcome to your team&apos;s workspace.</p>
+          <label htmlFor="username">Username</label>
           <input
             id="username"
             name="username"
             disabled={isSubmitting}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2"
+            aria-describedby={error ? "signin-error" : undefined}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             autoComplete="username"
             autoCapitalize="none"
             autoCorrect="off"
+            spellCheck={false}
             required
           />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium">Password</label>
+          <label htmlFor="password">Password</label>
+          <div className={styles.password}>
           <input
             id="password"
             name="password"
             disabled={isSubmitting}
             type={showPassword ? "text" : "password"}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2"
+            aria-describedby={error ? "signin-error" : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             required
           />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={showPassword} onChange={e => setShowPassword(e.target.checked)} />Show password</label>
-        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+          <button type="button" disabled={isSubmitting} onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} aria-controls="password">{showPassword ? "Hide" : "Show"}</button>
+          </div>
+        {error && <p id="signin-error" role="alert" className={styles.error}>{error}</p>}
         {slowLoginHint && (
-          <p role="status" className="text-sm text-slate-600">
+          <p role="status" className={styles.status}>
             Connecting to A3i. This can take up to 90 seconds after a period of inactivity. Your sign-in is still in progress.
           </p>
         )}
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className={`${styles.primary} ${styles.submit}`}
         >
-          {isSubmitting ? "Signing in..." : "Sign In"}
+          {isSubmitting ? "Signing in…" : <>Sign in<EntryArrow /></>}
         </button>
-      <p className="login-note">For authorized scheduling staff.</p>
+      <p className={styles.formNote}>Use your A3i username and password.</p>
       </form>
-      </section>
-    </main>
+      </main>
+    </EntryShell>
   );
 }

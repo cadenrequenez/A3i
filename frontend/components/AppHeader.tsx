@@ -9,7 +9,7 @@ export default function AppHeader() {
   const logoSrc = isWelcome ? "/logos/a3i-light.png" : "/logos/a3i-dark.png";
   const [logoVisible, setLogoVisible] = useState(true);
 
-  if (pathname === "/" || pathname === "/login") return null;
+  if (pathname === "/" || pathname === "/login" || pathname === "/welcome") return null;
 
   return (
     <header className="mx-auto w-full max-w-6xl px-6 pb-4 pt-6">

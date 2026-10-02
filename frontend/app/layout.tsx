@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import AppHeader from "../components/AppHeader";
 
 export const metadata = {
-  title: "A3i Scheduler",
-  description: "Artificial Anesthesia Administrative Intelligence"
+  title: "A3i | Anesthesia Administration & Artificial Intelligence",
+  description: "Built for anesthesia. Designed around your team. One intelligent workspace for scheduling, staffing, and team coordination."
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
