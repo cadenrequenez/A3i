@@ -257,8 +257,14 @@ class ManualCallDay(BaseModel):
     facility_id: int
     first_call_md_id: int | None = None
     second_call_md_id: int | None = None
+    first_call_guest_name: StaffName | None = None
+    second_call_guest_name: StaffName | None = None
     expected_first_call_md_id: int | None = None
     expected_second_call_md_id: int | None = None
+    expected_first_call_guest_name: StaffName | None = None
+    expected_second_call_guest_name: StaffName | None = None
+    off_md_ids: list[int] | None = None
+    expected_off_md_ids: list[int] | None = None
 
 
 class ManualMonthRequest(BaseModel):
@@ -277,3 +283,7 @@ class TimeOffOut(TimeOffCreate):
     id: int
     class Config:
         from_attributes = True
+
+
+class ManualCallDayOut(ScheduleOut):
+    time_off_entries: list[TimeOffOut]
