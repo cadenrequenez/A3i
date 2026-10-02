@@ -6,7 +6,7 @@ export type ScheduleEntry = {
   crnaIds: number[];
   mdNames?: string[];
   crnaNames?: string[];
-  callAssignments?: Record<string, number | null>;
+  callAssignments?: { first_call_md_id?: number | null; second_call_md_id?: number | null; first_call_guest_name?: string | null; second_call_guest_name?: string | null; [key: string]: number | string | null | undefined };
   callFirstName?: string;
   callSecondName?: string;
 };
