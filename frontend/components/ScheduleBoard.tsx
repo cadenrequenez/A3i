@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Calendar from "./Calendar";
+import Calendar, { type CallFocus } from "./Calendar";
 import TimeOffPanel from "./TimeOffPanel";
 import ScheduleExport from "./ScheduleExport";
 import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
@@ -30,7 +30,9 @@ function formatIsoDate(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-export default function ScheduleBoard() {
+export default function ScheduleBoard({accountKey}:{accountKey?:string}) {
+  const [focus, setFocus] = useState<CallFocus>("all");
+  const [resumeDate, setResumeDate] = useState<string|null>(null);
   const [timeOff,setTimeOff] = useState<TimeOff[]|null>(null);
   const [firstGuest, setFirstGuest] = useState<string|null>(null);
   const [secondGuest, setSecondGuest] = useState<string|null>(null);
@@ -60,6 +62,15 @@ export default function ScheduleBoard() {
   const [editCallSecond, setEditCallSecond] = useState<number | null>(null);
   const [isGeneratingYear, setIsGeneratingYear] = useState(false);
   const [rioFacilityId, setRioFacilityId] = useState<number | null>(null);
+  const resumeKey = accountKey && rioFacilityId ? `a3i:workspace:${accountKey}:${rioFacilityId}:last-saved-day` : null;
+  useEffect(() => {
+    setResumeDate(null);
+    if (!resumeKey) return;
+    try {
+      const date = localStorage.getItem(resumeKey);
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && formatIsoDate(parseIsoDate(date)) === date) setResumeDate(date);
+    } catch { /* Scheduling remains available when browser storage is disabled. */ }
+  }, [resumeKey]);
   const [suggestions, setSuggestions] = useState<AIFixSuggestion[]>([]);
   const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
   const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
@@ -216,6 +227,10 @@ export default function ScheduleBoard() {
     return entry.date.startsWith(`${year}-${String(month).padStart(2,"0")}-`) &&
       (calls?.first_call_md_id || calls?.first_call_guest_name) && (calls?.second_call_md_id || calls?.second_call_guest_name);
   }).map(entry => entry.date)).size;
+  const monthRows = schedules.filter(entry => entry.date.startsWith(`${year}-${String(month).padStart(2,"0")}-`));
+  const firstCount = monthRows.filter(entry => entry.callAssignments?.first_call_md_id || entry.callAssignments?.first_call_guest_name).length;
+  const secondCount = monthRows.filter(entry => entry.callAssignments?.second_call_md_id || entry.callAssignments?.second_call_guest_name).length;
+  const assignedDays = monthRows.filter(entry => entry.callAssignments?.first_call_md_id || entry.callAssignments?.first_call_guest_name || entry.callAssignments?.second_call_md_id || entry.callAssignments?.second_call_guest_name).length;
   const savedFirst = daySchedules[0]?.callAssignments?.first_call_md_id ?? null;
   const savedSecond = daySchedules[0]?.callAssignments?.second_call_md_id ?? null;
   const savedFirstGuest = daySchedules[0]?.callAssignments?.first_call_guest_name ?? null;
@@ -231,10 +246,11 @@ export default function ScheduleBoard() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   function chooseDate(date: string) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || saving) return;
-    if (dirty && !window.confirm("Leave this day without saving your changes?")) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || saving) return false;
+    if (dirty && !window.confirm("Leave this day without saving your changes?")) return false;
     setSelectedDate(date); setMonth(Number(date.slice(5,7))); setYear(Number(date.slice(0,4)));
     setStatus(null); setMonthAction(null);
+    return true;
   }
   async function changeMonth(action: "blank" | "restore") {
     if (!rioFacilityId || dirty || monthChanging) return;
@@ -247,13 +263,17 @@ export default function ScheduleBoard() {
     } catch(error) { setStatus((error as Error).message); }
     finally { setSaving(false); setMonthChanging(false); setMonthAction(null); }
   }
+  function shiftDay(delta:number) {
+    const date = parseIsoDate(selectedDate); date.setDate(date.getDate()+delta); chooseDate(formatIsoDate(date));
+  }
   function goToUnfinishedDay() {
-    for (let day=1; day<=daysInMonth; day++) {
+    const current = Number(selectedDate.slice(8));
+    for (let offset=1; offset<=daysInMonth; offset++) {
+      const day = (current-1+offset)%daysInMonth+1;
       const value = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
       const calls = schedules.find(entry=>entry.date===value)?.callAssignments;
-      if (!(calls?.first_call_md_id || calls?.first_call_guest_name) || !(calls?.second_call_md_id || calls?.second_call_guest_name)) {
-        chooseDate(value); setView("day"); return;
-      }
+      const first = Boolean(calls?.first_call_md_id || calls?.first_call_guest_name), second = Boolean(calls?.second_call_md_id || calls?.second_call_guest_name);
+      if (focus === "first" ? !first : focus === "second" ? !second : !(first && second)) { chooseDate(value); return; }
     }
   }
   async function saveCall(next = false){
@@ -268,26 +288,31 @@ export default function ScheduleBoard() {
       const entry: ScheduleEntry = {id:saved.id,date:saved.date,facility:RIO_FACILITY,mdIds:saved.md_ids,crnaIds:saved.crna_ids,callAssignments:saved.call_assignments};
       setSchedules(previous => [...previous.filter(item => item.date !== selectedDate),entry]);
       setTimeOff(saved.time_off_entries);
+      if (resumeKey) {
+        setResumeDate(selectedDate);
+        try { localStorage.setItem(resumeKey, selectedDate); } catch { /* Saving to the server already succeeded. */ }
+      }
       setStatus(`${selectedLabel} saved. You can change these assignments anytime.`);
       if(next){const tomorrow=parseIsoDate(selectedDate);tomorrow.setDate(tomorrow.getDate()+1);const date=formatIsoDate(tomorrow);setSelectedDate(date);setMonth(Number(date.slice(5,7)));setYear(Number(date.slice(0,4)));}
     }catch(error){setStatus((error as Error).message);}finally{setSaving(false);}
   }
   return <div className="schedule-workspace">
-    <header className="schedule-heading"><div><p className="eyebrow">{RIO_FACILITY}</p><h1>{monthLabel}</h1><label className="text-sm text-slate-600">Schedule month<input aria-label="Schedule month" className="ml-3 mt-2" type="month" min="2000-01" max="2100-12" disabled={saving||loading} value={`${year}-${String(month).padStart(2,"0")}`} onChange={e=>{if(e.target.value)chooseDate(`${e.target.value}-01`);}}/></label></div>
-     <div className="schedule-navigation"><div className="view-toggle"><button aria-pressed={view==="month"} onClick={()=>setView("month")}>Month</button><button aria-pressed={view==="day"} onClick={()=>setView("day")}>Day</button></div>
-      <button aria-label="Previous month" onClick={()=>shiftMonth(-1)}>‹</button><button onClick={()=>{chooseDate(todayIso);setView("month");}}>Today</button><button aria-label="Next month" onClick={()=>shiftMonth(1)}>›</button>
+    <header className="schedule-heading"><div><p className="eyebrow">{RIO_FACILITY}</p><h1>{monthLabel}</h1><p className="schedule-intro">Build it your way. Save a little, come back anytime.</p></div>
+     <div className="schedule-heading-actions"><label className="month-picker"><span className="sr-only">Schedule month</span><input aria-label="Schedule month" type="month" min="2000-01" max="2100-12" disabled={saving||loading} value={`${year}-${String(month).padStart(2,"0")}`} onChange={e=>{if(e.target.value)chooseDate(`${e.target.value}-01`);}}/></label>
+      {role==="admin"&&<button className="primary-button" disabled={loading||saving} onClick={()=>{if(resumeDate)chooseDate(resumeDate);else goToUnfinishedDay();}}>Resume scheduling</button>}
      </div>
     </header>
     <div className="schedule-body">
-     <p className="mb-4 text-sm text-slate-600">Build your call schedule: choose a day, enter either or both calls, and save your progress. Saved days can be edited anytime. You do not need to generate a month first.</p>
-     <p className="mb-4 text-sm font-semibold" aria-live="polite">{loading?"Checking saved days…":`${completeDays} of ${daysInMonth} days fully assigned and saved · ${completeDays===daysInMonth?"All days filled — ready for your review":`${daysInMonth-completeDays} days left to fill`}`}{dirty && " · Current edits are not saved"}</p>
-     {role==="admin" && <div className="flex flex-wrap gap-2 mb-4">
-       <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty||backupAvailable} onClick={()=>setMonthAction("blank")}>{monthChanging?"Updating month…":"Start blank month"}</button>
-       <button className="primary-button" disabled={loading||saving||completeDays===daysInMonth} onClick={goToUnfinishedDay}>Go to next unfinished day</button>
-       {backupAvailable && <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty} onClick={()=>setMonthAction("restore")}>Restore previous version</button>}
-     </div>}
-     <div className="flex flex-wrap gap-2 mb-4">{[['call-totals','Call totals']].map(([id,label])=><button key={id} className="secondary-button" onClick={()=>{const panel=document.getElementById(id) as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'start'});panel.querySelector('summary')?.focus();}}}>{label}</button>)}</div>
-     <ScheduleExport year={year} month={month} facility={RIO_FACILITY} schedules={hydratedSchedules} offForDate={offForDate} disabled={timeOff===null||loading||saving||generating||isGeneratingYear||dirty}/>
+     <div className="schedule-toolbar">
+      <div className="call-focus" role="group" aria-label="Calendar call focus">{([['all','Both calls'],['first','1st calls'],['second','2nd calls']] as const).map(([value,label])=><button key={value} aria-pressed={focus===value} onClick={()=>setFocus(value)}>{label}</button>)}</div>
+      <div className="schedule-toolbar-actions"><button className="secondary-button" onClick={()=>{const panel=document.getElementById('call-totals') as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'start'});panel.querySelector('summary')?.focus();}}}>Call totals</button>
+       <details className="export-menu"><summary>Export calendar <span aria-hidden="true">↓</span></summary><div><ScheduleExport year={year} month={month} facility={RIO_FACILITY} schedules={hydratedSchedules} offForDate={offForDate} disabled={timeOff===null||loading||saving||generating||isGeneratingYear||dirty}/></div></details>
+       {role==="admin"&&<button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty||backupAvailable} onClick={()=>setMonthAction("blank")}>{monthChanging?"Updating month…":"Start blank month"}</button>}
+       {role==="admin"&&backupAvailable&&<button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty} onClick={()=>setMonthAction("restore")}>Restore previous version</button>}
+      </div>
+     </div>
+     <div className="schedule-progress" aria-live="polite"><span className="progress-meter" aria-hidden="true"><span style={{width:`${completeDays/daysInMonth*100}%`}}/><span style={{width:`${(assignedDays-completeDays)/daysInMonth*100}%`}}/></span><span><strong>{firstCount} / {daysInMonth}</strong> 1st calls</span><span><strong>{secondCount} / {daysInMonth}</strong> 2nd calls</span><span>{daysInMonth-assignedDays} days without calls</span><span className="progress-note">{loading?"Loading saved progress…":dirty?"Current day has unsaved changes":completeDays===daysInMonth?"Both calls filled · Ready for your review":"Partial days stay saved"}</span></div>
+     <div className="schedule-navigation"><div className="view-toggle"><button aria-pressed={view==="month"} onClick={()=>setView("month")}>Month</button><button aria-pressed={view==="day"} onClick={()=>setView("day")}>Day</button></div><span className="focus-note">{focus==='all'?'Reviewing both calls':`Working on ${focus==='first'?'1st':'2nd'} calls`}</span><button aria-label="Previous month" disabled={saving||loading} onClick={()=>shiftMonth(-1)}>‹</button><button disabled={saving||loading} onClick={()=>{chooseDate(todayIso);setView("month");}}>Today</button><button aria-label="Next month" disabled={saving||loading} onClick={()=>shiftMonth(1)}>›</button></div>
      {monthAction && <section className="status-message" aria-label="Confirm month change">
        <p>{monthAction==="blank"?`Start ${monthLabel} blank? Your current call assignments will be kept as a previous version you can restore.`:`Restore the previous version of ${monthLabel}? Your current work will be kept so you can switch back.`}</p>
        <div className="flex gap-2 mt-3"><button className="primary-button" disabled={saving||dirty} onClick={()=>changeMonth(monthAction)}>{monthAction==="blank"?"Keep a copy and start blank":"Restore and keep current version"}</button><button className="secondary-button" disabled={saving} onClick={()=>setMonthAction(null)}>Cancel</button></div>
@@ -295,12 +320,12 @@ export default function ScheduleBoard() {
      {status && <p role="status" className="status-message">{status}</p>}
      {loading && <p role="status" className="status-message">Loading your saved schedule…</p>}
      <div className={`schedule-layout ${view==="day"?"day-view":""}`}>
-      <div className="schedule-calendar-area">{view==="day"?<div className="day-overview surface-card"><button className="text-button" onClick={()=>setView("month")}>← Back to month</button><p className="eyebrow mt-6">Daily coverage</p><h2>{selectedLabel}</h2><p className="mt-2 text-sm text-slate-600">{RIO_FACILITY}</p><div className="day-call-summary"><div><span>First call</span><strong>{daySchedules[0]?.callFirstName||"Unassigned"}</strong></div><div><span>Second call</span><strong>{daySchedules[0]?.callSecondName||"Unassigned"}</strong></div><div><span>Post call</span><strong>{postCallName==="TBD"?"Not available":postCallName}</strong></div></div></div>:<Calendar offForDate={offForDate} schedules={hydratedSchedules} view="month" selectedDate={selectedDate} onSelectDate={date=>{chooseDate(date);if(window.matchMedia("(max-width: 700px)").matches)setView("day");}}/>}
+      <div className="schedule-calendar-area">{view==="day"?<div className="day-overview surface-card"><button className="text-button" onClick={()=>setView("month")}>← Back to month</button><p className="eyebrow mt-6">Daily coverage</p><h2>{selectedLabel}</h2><p className="mt-2 text-sm text-slate-600">{RIO_FACILITY}</p><div className="day-call-summary"><div><span>First call</span><strong>{daySchedules[0]?.callFirstName||"Unassigned"}</strong></div><div><span>Second call</span><strong>{daySchedules[0]?.callSecondName||"Unassigned"}</strong></div><div><span>Post call</span><strong>{postCallName==="TBD"?"Not available":postCallName}</strong></div></div></div>:<Calendar offForDate={offForDate} schedules={hydratedSchedules} view="month" focus={focus} selectedDate={selectedDate} onSelectDate={date=>{if(chooseDate(date)&&window.matchMedia("(max-width: 950px)").matches)document.querySelector('.schedule-detail')?.scrollIntoView({block:'start'});}}/>}
       </div>
       <aside className="schedule-detail" aria-label="Selected day">
-       <section className="detail-card"><p className="eyebrow">Selected day</p><h2>{selectedLabel}</h2><label className="field-label" htmlFor="schedule-date">Go to date</label><input id="schedule-date" type="date" value={selectedDate} disabled={saving} onChange={e=>chooseDate(e.target.value)}/>
+       <section className="detail-card"><div className="editor-heading"><div><p className="eyebrow">Selected day</p><h2>{selectedLabel}</h2></div><div className="day-arrows"><button aria-label="Previous day" disabled={saving||loading} onClick={()=>shiftDay(-1)}>‹</button><button aria-label="Next day" disabled={saving||loading} onClick={()=>shiftDay(1)}>›</button></div></div><label className="field-label" htmlFor="schedule-date">Go to date</label><input id="schedule-date" type="date" value={selectedDate} disabled={saving} onChange={e=>chooseDate(e.target.value)}/>
         {!savedFirst&&!savedSecond&&!savedFirstGuest&&!savedSecondGuest&&<p className="empty-note">Fill either call now and come back for the other later.</p>}
-        {([['first', 'First-call doctor', editCallFirst, firstGuest, setEditCallFirst, setFirstGuest], ['second', 'Second-call doctor', editCallSecond, secondGuest, setEditCallSecond, setSecondGuest]] as const).map(([key,label,id,guest,setId,setGuest]) => <div key={key}>
+        {([['first', '1st call', editCallFirst, firstGuest, setEditCallFirst, setFirstGuest], ['second', '2nd call', editCallSecond, secondGuest, setEditCallSecond, setSecondGuest]] as const).map(([key,label,id,guest,setId,setGuest]) => <div key={key}>
           <label className="field-label" htmlFor={`${key}-call`}>{label}</label>
           <select id={`${key}-call`} disabled={role!=="admin"||saving||loading} value={guest!==null?'guest':id??''} onChange={e=>{const value=e.target.value;setId(value==='guest'?null:Number(value)||null);setGuest(value==='guest'?'':null);}}>
             <option value="">Unassigned</option><option value="guest">Type a guest / locum name…</option>
@@ -308,7 +333,7 @@ export default function ScheduleBoard() {
           </select>
           {guest!==null&&<><label className="field-label" htmlFor={`${key}-guest`}>Guest / locum name</label><input id={`${key}-guest`} maxLength={120} value={guest} disabled={role!=="admin"||saving} placeholder="Type the doctor’s name" onChange={e=>setGuest(e.target.value)}/><p className="mt-2 text-xs text-slate-600">Saved on this day only. Never added to the roster.</p></>}
         </div>)}
-        <fieldset disabled={role!=="admin"||saving||loading||timeOff===null} aria-label="Off for the selected day">
+        <fieldset className="day-off-fields" disabled={role!=="admin"||saving||loading||timeOff===null} aria-label="Off for the selected day">
           {offSlots.map((id,index)=><div key={index}>
             <label className="field-label" htmlFor={`off-doctor-${index}`}>{index===0?'Off':`Off · person ${index+1}`}</label>
             <div className="flex items-center gap-2">
@@ -323,13 +348,15 @@ export default function ScheduleBoard() {
           <p className="mt-2 text-xs text-slate-600">For this day only. Choose as many people as needed, then Save day.</p>
         </fieldset>
         {[editCallFirst,editCallSecond].some(id=>id!==null&&editOffIds.includes(id))&&<p role="alert" className="mt-3 text-sm text-amber-900">A selected doctor is marked OFF today. You can save your draft, then review this conflict.</p>}
-        {role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":daySchedules[0]?((savedFirst||savedFirstGuest)&&(savedSecond||savedSecondGuest)?"Saved · Both calls assigned":"Saved · Still in progress"):"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}
+        {role==="admin"?<><p className={`day-save-state ${dirty?"unsaved":""}`} role="status">{dirty?"Unsaved changes":daySchedules[0]?((savedFirst||savedFirstGuest)&&(savedSecond||savedSecondGuest)?"Saved · Both calls assigned":"Saved · Still in progress"):"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}
 
+        {role==="admin"&&<button className="text-button next-unfinished" disabled={loading||saving||(focus==='first'?firstCount===daysInMonth:focus==='second'?secondCount===daysInMonth:completeDays===daysInMonth)} onClick={goToUnfinishedDay}>Next unfinished {focus==='all'?'day':`${focus==='first'?'1st':'2nd'} call`} <span aria-hidden="true">→</span></button>}
         <TimeOffPanel facility={rioFacilityId} doctors={mdMap} inactiveIds={inactiveMdIds} selectedDate={selectedDate} canEdit={role==="admin"} entries={timeOff} disabled={dirty||daySaving||loading} onBusyChange={setRangeBusy} onChange={setTimeOff}/>
        </section>
-       {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Time-off labels are for your manual planning; automatic tools do not yet apply who is off. Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
+
       </aside>
      </div>
+     {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Time-off labels are for your manual planning; automatic tools do not yet apply who is off. Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
      <details id="call-totals" className="surface-card rounded-xl p-4 mt-4"><summary className="cursor-pointer py-2 font-semibold">Monthly call totals · {monthLabel}</summary><p className="text-sm text-slate-600 my-3">Counts update when you save. Partial days count toward the assigned call.</p><div className="overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">Saved call assignments by doctor for {monthLabel}</caption><thead><tr><th scope="col" className="text-left p-3">Doctor</th><th scope="col">1st call</th><th scope="col">2nd call</th><th scope="col">Total</th></tr></thead><tbody>{(() => {
        const rows = hydratedSchedules.filter(r=>r.date.startsWith(`${year}-${String(month).padStart(2,'0')}-`));
        const totals = new Map<string,{name:string;first:number;second:number}>();
@@ -370,7 +397,7 @@ export default function ScheduleBoard() {
                 {role === "admin" && (
                   <button
                     className="mt-3 rounded bg-slate-900 px-3 py-1 text-xs text-white disabled:opacity-50"
-                    disabled={applyingSuggestionIndex === index}
+                    disabled={applyingSuggestionIndex !== null || dirty || saving || generating || isGeneratingYear}
                     onClick={async () => {
                       setApplyingSuggestionIndex(index);
                       setSuggestionStatus(null);

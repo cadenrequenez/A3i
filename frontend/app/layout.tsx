@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./workspace.css";
 import type { ReactNode } from "react";
 import AppHeader from "../components/AppHeader";
 

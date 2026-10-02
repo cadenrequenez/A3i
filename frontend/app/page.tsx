@@ -25,13 +25,13 @@ export default function DashboardPage() {
  return <div className="workspace-shell">
   <a className="skip-link" href="#workspace-content">Skip to content</a>
   <aside className="workspace-sidebar">
-   <a href="/" aria-label="A3i home" className="workspace-brand"><img src="/logos/a3i-dark.png" alt="A3i"/><span>Anesthesia<br/><strong>Scheduling</strong></span></a>
-   <nav aria-label="Workspace sections">{TABS.map((tab,i)=><button key={tab} aria-current={activeTab===tab?"page":undefined} onClick={()=>setActiveTab(tab)}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={icons[i]}/></svg>{tab}</button>)}</nav>
-   <div className="sidebar-footer"><p>{profile?.display_name || profile?.username || "Your team. Your schedule."}{profile?.title && <><br/><strong>{profile.title}</strong></>}</p><button onClick={signOut} disabled={signingOut}>{signingOut?"Signing out…":"Sign out"}<span aria-hidden="true">↗</span></button></div>
+   <a href="/" aria-label="A3i home" className="workspace-brand"><img src="/logos/a3i-navy.png" alt="A3i"/></a>
+   <nav aria-label="Workspace sections">{TABS.map((tab,i)=><button key={tab} aria-current={activeTab===tab?"page":undefined} onClick={()=>setActiveTab(tab)}><svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={icons[i]}/></svg>{tab === "Staff" ? "Team" : tab === "Sites" ? "Facilities" : tab}</button>)}</nav>
+   <div className="sidebar-footer"><button onClick={signOut} disabled={signingOut}><span aria-hidden="true">↗</span>{signingOut?"Signing out…":"Sign out"}</button></div>
   </aside>
   <main id="workspace-content" className="workspace-main" tabIndex={-1}>
-   {profile?.display_name && <div className="px-7 pt-5 text-sm text-slate-600">Welcome, <strong>{profile.display_name}</strong>{profile.title ? ` · ${profile.title}` : ""}</div>}
-   <div hidden={activeTab!=="Schedule"}><ScheduleBoard/></div>
+   <header className="workspace-masthead"><div><p className="masthead-kicker">Your scheduling workspace</p><p className="workspace-owner">{profile?.display_name || profile?.username || "Welcome to A3i"}{profile?.title && <span>{profile.title}</span>}</p></div><span className="workspace-privacy"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Your private workspace</span></header>
+   <div hidden={activeTab!=="Schedule"}><ScheduleBoard accountKey={profile?.username}/></div>
    {activeTab!=="Schedule"&&<div className="workspace-section"><p className="eyebrow">A3i workspace</p><h1 className="section-title">{activeTab === "Analytics" ? "Team workload" : activeTab === "Sites" ? "Your facilities" : "Your team"}</h1>{activeTab==="Staff"?<StaffList/>:activeTab==="Sites"?<SitesList/>:<AnalyticsPanel/>}</div>}
   </main>
  </div>;
