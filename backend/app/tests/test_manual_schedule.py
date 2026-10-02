@@ -64,3 +64,75 @@ def test_time_off_is_owned_and_survives_blank_month(client,db_session):
     assert len(client.get(url,headers=h,params={'facility_id':site.id}).json())==1
     assert client.delete(f"{url}/{entry['id']}",headers=h).status_code==200
     assert client.get(url,headers=h,params={'facility_id':site.id}).json()==[]
+
+
+def test_guest_names_are_day_only_and_concurrency_protected(client, db_session):
+    create_user(db_session, 'owner', 'secret', 'admin')
+    create_user(db_session, 'other', 'secret', 'admin')
+    h = get_auth_headers(client, 'owner', 'secret')
+    other = get_auth_headers(client, 'other', 'secret')
+    site = models.Facility(site_name='Rio Grande Regional Hospital')
+    md = models.MD(name='Roster Doctor', active=True)
+    db_session.add_all([site, md]); db_session.commit()
+    url = '/api/v1/schedules/manual/day'
+    payload = {'date': '2026-11-01', 'facility_id': site.id, 'first_call_guest_name': '  Visiting Doctor  '}
+    result = client.put(url, headers=h, json=payload)
+    assert result.status_code == 200, result.text
+    row = result.json()
+    assert row['call_assignments']['first_call_guest_name'] == 'Visiting Doctor'
+    assert row['md_ids'] == []
+    assert db_session.query(models.MD).count() == 1
+    assert client.get('/api/v1/schedules/', headers=other).json() == []
+    assert client.get(f"/api/v1/schedules/{row['id']}", headers=h).json()['call_assignments']['first_call_guest_name'] == 'Visiting Doctor'
+    assert client.put(url, headers=h, json=payload).json()['id'] == row['id']
+    # A stale save cannot silently remove a guest name.
+    assert client.put(url, headers=h, json={**payload, 'first_call_guest_name': None}).status_code == 409
+    assert client.put(url, headers=h, json={**payload, 'second_call_guest_name': 'visiting doctor'}).status_code == 422
+    assert client.put(url, headers=h, json={**payload, 'first_call_md_id': md.id}).status_code == 422
+    edited = {**payload, 'expected_first_call_guest_name': 'Visiting Doctor', 'second_call_md_id': md.id}
+    assert client.put(url, headers=h, json=edited).status_code == 200
+    cleared = {**edited, 'first_call_guest_name': None, 'expected_second_call_md_id': md.id}
+    assert client.put(url, headers=h, json=cleared).json()['call_assignments']['first_call_guest_name'] is None
+    assert db_session.query(models.MD).count() == 1
+
+
+def test_selected_day_off_saves_atomically_and_preserves_neighboring_days(client, db_session):
+    from app.models.schedule import ScheduleTimeOff
+    create_user(db_session, 'owner', 'secret', 'admin'); create_user(db_session, 'other', 'secret', 'admin')
+    h = get_auth_headers(client, 'owner', 'secret'); other = get_auth_headers(client, 'other', 'secret')
+    site = models.Facility(site_name='Rio Grande Regional Hospital')
+    people = [models.MD(name=f'Doctor {i}', active=True) for i in range(2)]
+    db_session.add_all([site, *people]); db_session.commit()
+    a, b = [p.id for p in people]
+    off_url = '/api/v1/schedules/manual/time-off'
+    span = {'facility_id': site.id, 'md_id': a, 'start_date': '2026-11-01', 'end_date': '2026-11-03'}
+    assert client.post(off_url, headers=h, json=span).status_code == 200
+    assert client.post(off_url, headers=other, json=span).status_code == 200
+    url = '/api/v1/schedules/manual/day'
+    payload = {'facility_id': site.id, 'date': '2026-11-02', 'first_call_guest_name': 'Locum', 'off_md_ids': [b], 'expected_off_md_ids': [a]}
+    response = client.put(url, headers=h, json=payload)
+    assert response.status_code == 200, response.text
+    entries = response.json()['time_off_entries']
+    assert {(r['md_id'], r['start_date'], r['end_date']) for r in entries} == {(a,'2026-11-01','2026-11-01'),(a,'2026-11-03','2026-11-03'),(b,'2026-11-02','2026-11-02')}
+    assert client.get(off_url, headers=other, params={'facility_id': site.id}).json()[0]['end_date'] == '2026-11-03'
+    assert client.put(url, headers=h, json=payload).status_code == 200
+    # Concurrent off edits reject the complete save, including call-name changes.
+    stale = {**payload, 'first_call_guest_name': 'Replacement', 'expected_first_call_guest_name': 'Locum', 'off_md_ids': []}
+    assert client.put(url, headers=h, json=stale).status_code == 409
+    assert db_session.query(models.Schedule).first().call_assignments['first_call_guest_name'] == 'Locum'
+    assert client.put(url, headers=h, json={**stale, 'expected_off_md_ids': [b]}).status_code == 200
+    assert db_session.query(ScheduleTimeOff).filter_by(md_id=b).count() == 0
+
+
+def test_removed_roster_doctor_can_be_kept_but_not_newly_assigned(client, db_session):
+    create_user(db_session, 'owner', 'secret', 'admin'); h = get_auth_headers(client, 'owner', 'secret')
+    site = models.Facility(site_name='Rio Grande Regional Hospital'); md = models.MD(name='Manny', active=True)
+    db_session.add_all([site, md]); db_session.commit()
+    url = '/api/v1/schedules/manual/day'
+    payload = {'facility_id': site.id, 'date': '2026-11-02', 'first_call_md_id': md.id}
+    saved = client.put(url, headers=h, json=payload).json()
+    assert client.put(f'/api/v1/mds/{md.id}', headers=h, json={'active': False}).status_code == 200
+    assert client.get('/api/v1/mds/', headers=h).json() == []
+    assert client.get(f"/api/v1/schedules/{saved['id']}", headers=h).json()['call_assignments']['first_call_md_id'] == md.id
+    assert client.put(url, headers=h, json={**payload, 'expected_first_call_md_id': md.id, 'second_call_guest_name': 'Visitor'}).status_code == 200
+    assert client.put(url, headers=h, json={**payload, 'date': '2026-11-03'}).status_code == 422
