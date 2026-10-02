@@ -136,3 +136,24 @@ def test_removed_roster_doctor_can_be_kept_but_not_newly_assigned(client, db_ses
     assert client.get(f"/api/v1/schedules/{saved['id']}", headers=h).json()['call_assignments']['first_call_md_id'] == md.id
     assert client.put(url, headers=h, json={**payload, 'expected_first_call_md_id': md.id, 'second_call_guest_name': 'Visitor'}).status_code == 200
     assert client.put(url, headers=h, json={**payload, 'date': '2026-11-03'}).status_code == 422
+
+
+def test_multiple_off_people_can_be_saved_reopened_and_removed_individually(client, db_session):
+    create_user(db_session, 'owner', 'secret', 'admin'); h = get_auth_headers(client, 'owner', 'secret')
+    site = models.Facility(site_name='Rio Grande Regional Hospital')
+    people = [models.MD(name=f'Off Doctor {i}', active=True) for i in range(3)]
+    db_session.add_all([site, *people]); db_session.commit()
+    a, b, c = [p.id for p in people]
+    url = '/api/v1/schedules/manual/day'
+    p = {'facility_id': site.id, 'date': '2026-11-02', 'first_call_md_id': c, 'off_md_ids': [a, b], 'expected_off_md_ids': []}
+    saved = client.put(url, headers=h, json=p)
+    assert saved.status_code == 200, saved.text
+    assert {r['md_id'] for r in saved.json()['time_off_entries']} == {a, b}
+    reopened = client.get('/api/v1/schedules/manual/time-off', headers=h, params={'facility_id': site.id}).json()
+    assert {r['md_id'] for r in reopened} == {a, b}
+    revised = {**p, 'expected_first_call_md_id': c, 'expected_off_md_ids': [a, b], 'off_md_ids': [b]}
+    saved = client.put(url, headers=h, json=revised)
+    assert saved.status_code == 200, saved.text
+    assert {r['md_id'] for r in saved.json()['time_off_entries']} == {b}
+    assert saved.json()['call_assignments']['first_call_md_id'] == c
+    assert saved.json()['call_assignments']['second_call_md_id'] is None
