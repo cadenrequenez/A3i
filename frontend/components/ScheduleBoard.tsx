@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Calendar from "./Calendar";
+import TimeOffPanel from "./TimeOffPanel";
 import ScheduleExport from "./ScheduleExport";
 import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
 import {
@@ -33,8 +34,8 @@ export default function ScheduleBoard() {
   const [timeOff,setTimeOff] = useState<TimeOff[]|null>(null);
   const [firstGuest, setFirstGuest] = useState<string|null>(null);
   const [secondGuest, setSecondGuest] = useState<string|null>(null);
-  const [editOffIds, setEditOffIds] = useState<number[]>([]);
-  const [offChoice, setOffChoice] = useState('');
+  const [offSlots, setOffSlots] = useState<(number|null)[]>([null]);
+  const editOffIds = offSlots.filter((id):id is number=>id!==null);
   const offForDate = (date:string) => [...new Set((timeOff||[]).filter(r=>r.start_date<=date&&r.end_date>=date).map(r=>mdMap[r.md_id]||'Doctor'))];
   const todayIso = formatIsoDate(new Date());
   const [view, setView] = useState<"month" | "day">("month");
@@ -47,7 +48,9 @@ export default function ScheduleBoard() {
   const [monthChanging, setMonthChanging] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving,setSaving] = useState(false);
+  const [daySaving,setSaving] = useState(false);
+  const [rangeBusy,setRangeBusy] = useState(false);
+  const saving = daySaving || rangeBusy;
   const [generating,setGenerating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [role, setRole] = useState<"admin" | "read-only">("read-only");
@@ -148,8 +151,8 @@ export default function ScheduleBoard() {
     return () => { cancelled = true; };
   }, [rioFacilityId]);
   useEffect(() => {
-    setEditOffIds([...new Set((timeOff || []).filter(r => r.start_date <= selectedDate && r.end_date >= selectedDate).map(r => r.md_id))]);
-    setOffChoice('');
+    const ids = [...new Set((timeOff || []).filter(r => r.start_date <= selectedDate && r.end_date >= selectedDate).map(r => r.md_id))];
+    setOffSlots(ids.length ? ids : [null]);
   }, [selectedDate, timeOff]);
 
   const shiftMonth = (delta: number) => {
@@ -305,16 +308,24 @@ export default function ScheduleBoard() {
           </select>
           {guest!==null&&<><label className="field-label" htmlFor={`${key}-guest`}>Guest / locum name</label><input id={`${key}-guest`} maxLength={120} value={guest} disabled={role!=="admin"||saving} placeholder="Type the doctor’s name" onChange={e=>setGuest(e.target.value)}/><p className="mt-2 text-xs text-slate-600">Saved on this day only. Never added to the roster.</p></>}
         </div>)}
-        <fieldset className="mt-5 border-t border-slate-200 pt-4" disabled={role!=="admin"||saving||loading||timeOff===null}>
-          <legend className="pt-4 font-semibold">Who’s off this day?</legend>
-          <p className="mb-2 text-sm text-slate-600">For {selectedLabel} only. Saved with your calls when you press Save day.</p>
-          <ul className="space-y-2">{editOffIds.map(id=><li key={id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-100 p-2 text-sm"><span><strong>OFF</strong> · {mdMap[id]||'Doctor'}</span>{role==='admin'&&<button type="button" className="secondary-button" aria-label={`Remove ${mdMap[id]} from off on ${selectedLabel}`} onClick={()=>setEditOffIds(previous=>previous.filter(item=>item!==id))}>Remove</button>}</li>)}</ul>
-          {!editOffIds.length&&<p className="text-sm text-slate-500">No one marked off.</p>}
-          {role==='admin'&&<><label className="field-label" htmlFor="off-doctor">Add someone off</label><select id="off-doctor" value={offChoice} onChange={e=>{const id=Number(e.target.value);if(id)setEditOffIds(previous=>[...previous,id]);setOffChoice('');}}><option value="">Choose a doctor to mark OFF…</option>{Object.entries(mdMap).filter(([id])=>!inactiveMdIds.includes(Number(id))&&!editOffIds.includes(Number(id))).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></>}
+        <fieldset disabled={role!=="admin"||saving||loading||timeOff===null} aria-label="Off for the selected day">
+          {offSlots.map((id,index)=><div key={index}>
+            <label className="field-label" htmlFor={`off-doctor-${index}`}>{index===0?'Off':`Off · person ${index+1}`}</label>
+            <div className="flex items-center gap-2">
+              <select className="min-w-0 flex-1" id={`off-doctor-${index}`} value={id??''} onChange={e=>setOffSlots(previous=>previous.map((value,slot)=>slot===index?Number(e.target.value)||null:value))}>
+                <option value="">Unassigned</option>
+                {Object.entries(mdMap).filter(([doctorId])=>(!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id)&&(!editOffIds.includes(Number(doctorId))||Number(doctorId)===id)).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
+              </select>
+              {role==='admin'&&offSlots.length>1&&<button type="button" className="secondary-button" aria-label={`Remove off selection ${index+1}${id?` for ${mdMap[id]}`:''}`} onClick={()=>setOffSlots(previous=>previous.filter((_,slot)=>slot!==index))}>Remove</button>}
+            </div>
+          </div>)}
+          {role==='admin'&&<button type="button" className="secondary-button mt-2 w-full" onClick={()=>setOffSlots(previous=>[...previous,null])}>+ Add another person off</button>}
+          <p className="mt-2 text-xs text-slate-600">For this day only. Choose as many people as needed, then Save day.</p>
         </fieldset>
         {[editCallFirst,editCallSecond].some(id=>id!==null&&editOffIds.includes(id))&&<p role="alert" className="mt-3 text-sm text-amber-900">A selected doctor is marked OFF today. You can save your draft, then review this conflict.</p>}
         {role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":daySchedules[0]?((savedFirst||savedFirstGuest)&&(savedSecond||savedSecondGuest)?"Saved · Both calls assigned":"Saved · Still in progress"):"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}
 
+        <TimeOffPanel facility={rioFacilityId} doctors={mdMap} inactiveIds={inactiveMdIds} selectedDate={selectedDate} canEdit={role==="admin"} entries={timeOff} disabled={dirty||daySaving||loading} onBusyChange={setRangeBusy} onChange={setTimeOff}/>
        </section>
        {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Time-off labels are for your manual planning; automatic tools do not yet apply who is off. Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
       </aside>
