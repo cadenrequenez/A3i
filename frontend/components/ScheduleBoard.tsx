@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Calendar from "./Calendar";
-import TimeOffPanel from "./TimeOffPanel";
 import ScheduleExport from "./ScheduleExport";
 import type { AIFixSuggestion, ScheduleEntry } from "../lib/types";
 import {
@@ -12,7 +11,7 @@ import {
   generateSchedule,
   suggestScheduleFixes,
   updateSchedule,
-  saveManualCallDay, hasMonthBackup, changeManualMonth, addGuestMd, type TimeOff
+  saveManualCallDay, hasMonthBackup, changeManualMonth, timeOffRequest, type TimeOff
 } from "../lib/api";
 import { getRole, getToken } from "../lib/auth";
 
@@ -32,8 +31,10 @@ function formatIsoDate(value: Date) {
 
 export default function ScheduleBoard() {
   const [timeOff,setTimeOff] = useState<TimeOff[]|null>(null);
-  const [guestName,setGuestName] = useState('');
-  const [guestBusy,setGuestBusy] = useState(false);
+  const [firstGuest, setFirstGuest] = useState<string|null>(null);
+  const [secondGuest, setSecondGuest] = useState<string|null>(null);
+  const [editOffIds, setEditOffIds] = useState<number[]>([]);
+  const [offChoice, setOffChoice] = useState('');
   const offForDate = (date:string) => [...new Set((timeOff||[]).filter(r=>r.start_date<=date&&r.end_date>=date).map(r=>mdMap[r.md_id]||'Doctor'))];
   const todayIso = formatIsoDate(new Date());
   const [view, setView] = useState<"month" | "day">("month");
@@ -80,8 +81,8 @@ export default function ScheduleBoard() {
           return {
             ...entry,
             mdNames: entry.mdIds.map((id) => mdMap[id]).filter(Boolean),
-            callFirstName: firstId ? mdMap[firstId] || String(firstId) : undefined,
-            callSecondName: secondId ? mdMap[secondId] || String(secondId) : undefined
+            callFirstName: firstId ? mdMap[firstId] || String(firstId) : entry.callAssignments?.first_call_guest_name || undefined,
+            callSecondName: secondId ? mdMap[secondId] || String(secondId) : entry.callAssignments?.second_call_guest_name || undefined
           };
         });
         setSchedules(hydrated);
@@ -120,8 +121,8 @@ export default function ScheduleBoard() {
           return {
             ...entry,
             mdNames: entry.mdIds.map((id) => mdMap[id]).filter(Boolean),
-            callFirstName: firstId ? mdMap[firstId] || String(firstId) : undefined,
-            callSecondName: secondId ? mdMap[secondId] || String(secondId) : undefined
+            callFirstName: firstId ? mdMap[firstId] || String(firstId) : entry.callAssignments?.first_call_guest_name || undefined,
+            callSecondName: secondId ? mdMap[secondId] || String(secondId) : entry.callAssignments?.second_call_guest_name || undefined
           };
         }),
     [schedules, mdMap]
@@ -133,12 +134,23 @@ export default function ScheduleBoard() {
   );
 
   useEffect(() => {
-    const entry = hydratedSchedules.find((item) => item.date === selectedDate);
-    if (entry?.callAssignments) {
-      setEditCallFirst(entry.callAssignments.first_call_md_id ?? null);
-      setEditCallSecond(entry.callAssignments.second_call_md_id ?? null);
-    } else { setEditCallFirst(null); setEditCallSecond(null); }
+    const calls = hydratedSchedules.find(item => item.date === selectedDate)?.callAssignments;
+    setEditCallFirst(calls?.first_call_md_id ?? null);
+    setEditCallSecond(calls?.second_call_md_id ?? null);
+    setFirstGuest(calls?.first_call_guest_name ?? null);
+    setSecondGuest(calls?.second_call_guest_name ?? null);
   }, [selectedDate, hydratedSchedules]);
+  useEffect(() => {
+    if (!rioFacilityId) return;
+    let cancelled = false;
+    timeOffRequest(rioFacilityId, getToken()).then(rows => { if (!cancelled) setTimeOff(rows as TimeOff[]); })
+      .catch(error => { if (!cancelled) setStatus((error as Error).message); });
+    return () => { cancelled = true; };
+  }, [rioFacilityId]);
+  useEffect(() => {
+    setEditOffIds([...new Set((timeOff || []).filter(r => r.start_date <= selectedDate && r.end_date >= selectedDate).map(r => r.md_id))]);
+    setOffChoice('');
+  }, [selectedDate, timeOff]);
 
   const shiftMonth = (delta: number) => {
     const current = parseIsoDate(selectedDate);
@@ -181,7 +193,7 @@ export default function ScheduleBoard() {
     const priorEntry = hydratedSchedules.find((entry) => entry.date === priorDate);
     const postCallId = priorEntry?.callAssignments?.first_call_md_id;
     if (!postCallId) {
-      return "TBD";
+      return priorEntry?.callAssignments?.first_call_guest_name || "TBD";
     }
     return mdMap[postCallId] || String(postCallId);
   }, [selectedDate, hydratedSchedules, mdMap]);
@@ -199,12 +211,16 @@ export default function ScheduleBoard() {
   const completeDays = new Set(schedules.filter(entry => {
     const calls = entry.callAssignments;
     return entry.date.startsWith(`${year}-${String(month).padStart(2,"0")}-`) &&
-      calls?.first_call_md_id && calls?.second_call_md_id &&
-      calls.first_call_md_id !== calls.second_call_md_id;
+      (calls?.first_call_md_id || calls?.first_call_guest_name) && (calls?.second_call_md_id || calls?.second_call_guest_name);
   }).map(entry => entry.date)).size;
   const savedFirst = daySchedules[0]?.callAssignments?.first_call_md_id ?? null;
   const savedSecond = daySchedules[0]?.callAssignments?.second_call_md_id ?? null;
-  const dirty = editCallFirst !== savedFirst || editCallSecond !== savedSecond;
+  const savedFirstGuest = daySchedules[0]?.callAssignments?.first_call_guest_name ?? null;
+  const savedSecondGuest = daySchedules[0]?.callAssignments?.second_call_guest_name ?? null;
+  const savedOffIds = [...new Set((timeOff || []).filter(r => r.start_date <= selectedDate && r.end_date >= selectedDate).map(r => r.md_id))];
+  const dirty = editCallFirst !== savedFirst || editCallSecond !== savedSecond ||
+    (firstGuest?.trim() || null) !== savedFirstGuest || (secondGuest?.trim() || null) !== savedSecondGuest ||
+    [...editOffIds].sort((a,b)=>a-b).join(',') !== savedOffIds.sort((a,b)=>a-b).join(',');
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -232,19 +248,23 @@ export default function ScheduleBoard() {
     for (let day=1; day<=daysInMonth; day++) {
       const value = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
       const calls = schedules.find(entry=>entry.date===value)?.callAssignments;
-      if (!calls?.first_call_md_id || !calls?.second_call_md_id || calls.first_call_md_id===calls.second_call_md_id) {
+      if (!(calls?.first_call_md_id || calls?.first_call_guest_name) || !(calls?.second_call_md_id || calls?.second_call_guest_name)) {
         chooseDate(value); setView("day"); return;
       }
     }
   }
   async function saveCall(next = false){
-    if(editCallFirst!==null&&editCallFirst===editCallSecond){setStatus("Choose different doctors for first and second call, or leave either blank.");return;}
+    if ((firstGuest !== null && !firstGuest.trim()) || (secondGuest !== null && !secondGuest.trim())) { setStatus("Type the guest’s name, or choose Unassigned to leave that call blank."); return; }
+    const firstName = editCallFirst ? mdMap[editCallFirst] : firstGuest?.trim();
+    const secondName = editCallSecond ? mdMap[editCallSecond] : secondGuest?.trim();
+    if(firstName && secondName && firstName.toLocaleLowerCase() === secondName.toLocaleLowerCase()){setStatus("Choose different doctors for first and second call, or leave either blank.");return;}
     if(!rioFacilityId){setStatus("The facility could not be loaded. Refresh and try again.");return;}
     setSaving(true);setStatus(null);
     try {
-      const saved = await saveManualCallDay({date:selectedDate,facility_id:rioFacilityId,first_call_md_id:editCallFirst,second_call_md_id:editCallSecond,expected_first_call_md_id:savedFirst,expected_second_call_md_id:savedSecond},getToken());
+      const saved = await saveManualCallDay({date:selectedDate,facility_id:rioFacilityId,first_call_md_id:editCallFirst,second_call_md_id:editCallSecond,expected_first_call_md_id:savedFirst,expected_second_call_md_id:savedSecond,first_call_guest_name:firstGuest?.trim()||null,second_call_guest_name:secondGuest?.trim()||null,expected_first_call_guest_name:savedFirstGuest,expected_second_call_guest_name:savedSecondGuest,off_md_ids:editOffIds,expected_off_md_ids:savedOffIds},getToken());
       const entry: ScheduleEntry = {id:saved.id,date:saved.date,facility:RIO_FACILITY,mdIds:saved.md_ids,crnaIds:saved.crna_ids,callAssignments:saved.call_assignments};
       setSchedules(previous => [...previous.filter(item => item.date !== selectedDate),entry]);
+      setTimeOff(saved.time_off_entries);
       setStatus(`${selectedLabel} saved. You can change these assignments anytime.`);
       if(next){const tomorrow=parseIsoDate(selectedDate);tomorrow.setDate(tomorrow.getDate()+1);const date=formatIsoDate(tomorrow);setSelectedDate(date);setMonth(Number(date.slice(5,7)));setYear(Number(date.slice(0,4)));}
     }catch(error){setStatus((error as Error).message);}finally{setSaving(false);}
@@ -263,7 +283,7 @@ export default function ScheduleBoard() {
        <button className="primary-button" disabled={loading||saving||completeDays===daysInMonth} onClick={goToUnfinishedDay}>Go to next unfinished day</button>
        {backupAvailable && <button className="secondary-button" disabled={loading||saving||generating||isGeneratingYear||dirty} onClick={()=>setMonthAction("restore")}>Restore previous version</button>}
      </div>}
-     <div className="flex flex-wrap gap-2 mb-4">{[['time-off-panel','Time off'],['call-totals','Call totals']].map(([id,label])=><button key={id} className="secondary-button" onClick={()=>{const panel=document.getElementById(id) as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'start'});panel.querySelector('summary')?.focus();}}}>{label}</button>)}</div>
+     <div className="flex flex-wrap gap-2 mb-4">{[['call-totals','Call totals']].map(([id,label])=><button key={id} className="secondary-button" onClick={()=>{const panel=document.getElementById(id) as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'start'});panel.querySelector('summary')?.focus();}}}>{label}</button>)}</div>
      <ScheduleExport year={year} month={month} facility={RIO_FACILITY} schedules={hydratedSchedules} offForDate={offForDate} disabled={timeOff===null||loading||saving||generating||isGeneratingYear||dirty}/>
      {monthAction && <section className="status-message" aria-label="Confirm month change">
        <p>{monthAction==="blank"?`Start ${monthLabel} blank? Your current call assignments will be kept as a previous version you can restore.`:`Restore the previous version of ${monthLabel}? Your current work will be kept so you can switch back.`}</p>
@@ -276,16 +296,36 @@ export default function ScheduleBoard() {
       </div>
       <aside className="schedule-detail" aria-label="Selected day">
        <section className="detail-card"><p className="eyebrow">Selected day</p><h2>{selectedLabel}</h2><label className="field-label" htmlFor="schedule-date">Go to date</label><input id="schedule-date" type="date" value={selectedDate} disabled={saving} onChange={e=>chooseDate(e.target.value)}/>
-        {(!savedFirst&&!savedSecond)&&<p className="empty-note">This day is ready to fill in. Fill either call now and come back for the other later.</p>}<><label className="field-label" htmlFor="first-call">First-call doctor</label><select id="first-call" disabled={role!=="admin"||saving||loading||guestBusy} value={editCallFirst??""} onChange={e=>setEditCallFirst(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select><label className="field-label" htmlFor="second-call">Second-call doctor</label><select id="second-call" disabled={role!=="admin"||saving||loading||guestBusy} value={editCallSecond??""} onChange={e=>setEditCallSecond(Number(e.target.value)||null)}><option value="">Choose a doctor</option>{Object.entries(mdMap).map(([id,name])=><option key={id} value={id} disabled={inactiveMdIds.includes(Number(id))}>{name}{inactiveMdIds.includes(Number(id)) ? " (inactive)" : ""}</option>)}</select>{role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":daySchedules[0]?((savedFirst&&savedSecond)?"Saved · Both calls assigned":"Saved · Still in progress"):"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}</>
-        {role==="admin"&&<details className="mt-4"><summary className="cursor-pointer py-3 text-sm font-semibold">Add a guest doctor</summary><p className="text-sm text-slate-600">Add a locum or visiting MD to the shared roster. Save any call edits first.</p><label className="field-label" htmlFor="guest-name">Doctor’s name</label><input id="guest-name" maxLength={120} value={guestName} onChange={e=>setGuestName(e.target.value)} disabled={guestBusy}/><button className="secondary-button mt-2 w-full" disabled={guestBusy||!guestName.trim()||dirty} onClick={async()=>{const existing=Object.values(mdMap).some(n=>n.toLowerCase()===guestName.trim().toLowerCase());if(existing){setStatus('That name is already in the doctor list.');return;}setGuestBusy(true);try{const md=await addGuestMd(guestName.trim(),getToken());setMdMap(previous=>({...previous,[md.id]:md.name}));setGuestName('');setStatus(`${md.name} added. You can select them for either call.`);}catch(e){setStatus((e as Error).message);}finally{setGuestBusy(false);}}}>{guestBusy?'Adding…':'Add to doctor list'}</button></details>}
-        {[editCallFirst,editCallSecond].some(id=>id&&offForDate(selectedDate).includes(mdMap[id]))&&<p role="alert" className="mt-3 text-sm text-amber-900">A selected doctor is marked OFF today. You can save your draft, then review this conflict.</p>}
-        {offForDate(selectedDate).length>0&&<p className="mt-4 text-sm"><strong>OFF:</strong> {offForDate(selectedDate).join(', ')}</p>}
+        {!savedFirst&&!savedSecond&&!savedFirstGuest&&!savedSecondGuest&&<p className="empty-note">Fill either call now and come back for the other later.</p>}
+        {([['first', 'First-call doctor', editCallFirst, firstGuest, setEditCallFirst, setFirstGuest], ['second', 'Second-call doctor', editCallSecond, secondGuest, setEditCallSecond, setSecondGuest]] as const).map(([key,label,id,guest,setId,setGuest]) => <div key={key}>
+          <label className="field-label" htmlFor={`${key}-call`}>{label}</label>
+          <select id={`${key}-call`} disabled={role!=="admin"||saving||loading} value={guest!==null?'guest':id??''} onChange={e=>{const value=e.target.value;setId(value==='guest'?null:Number(value)||null);setGuest(value==='guest'?'':null);}}>
+            <option value="">Unassigned</option><option value="guest">Type a guest / locum name…</option>
+            {Object.entries(mdMap).filter(([doctorId])=>!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
+          </select>
+          {guest!==null&&<><label className="field-label" htmlFor={`${key}-guest`}>Guest / locum name</label><input id={`${key}-guest`} maxLength={120} value={guest} disabled={role!=="admin"||saving} placeholder="Type the doctor’s name" onChange={e=>setGuest(e.target.value)}/><p className="mt-2 text-xs text-slate-600">Saved on this day only. Never added to the roster.</p></>}
+        </div>)}
+        <fieldset className="mt-5 border-t border-slate-200 pt-4" disabled={role!=="admin"||saving||loading||timeOff===null}>
+          <legend className="pt-4 font-semibold">Who’s off this day?</legend>
+          <p className="mb-2 text-sm text-slate-600">For {selectedLabel} only. Saved with your calls when you press Save day.</p>
+          <ul className="space-y-2">{editOffIds.map(id=><li key={id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-100 p-2 text-sm"><span><strong>OFF</strong> · {mdMap[id]||'Doctor'}</span>{role==='admin'&&<button type="button" className="secondary-button" aria-label={`Remove ${mdMap[id]} from off on ${selectedLabel}`} onClick={()=>setEditOffIds(previous=>previous.filter(item=>item!==id))}>Remove</button>}</li>)}</ul>
+          {!editOffIds.length&&<p className="text-sm text-slate-500">No one marked off.</p>}
+          {role==='admin'&&<><label className="field-label" htmlFor="off-doctor">Add someone off</label><select id="off-doctor" value={offChoice} onChange={e=>{const id=Number(e.target.value);if(id)setEditOffIds(previous=>[...previous,id]);setOffChoice('');}}><option value="">Choose a doctor to mark OFF…</option>{Object.entries(mdMap).filter(([id])=>!inactiveMdIds.includes(Number(id))&&!editOffIds.includes(Number(id))).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></>}
+        </fieldset>
+        {[editCallFirst,editCallSecond].some(id=>id!==null&&editOffIds.includes(id))&&<p role="alert" className="mt-3 text-sm text-amber-900">A selected doctor is marked OFF today. You can save your draft, then review this conflict.</p>}
+        {role==="admin"?<><p className="mt-3 text-sm text-slate-600">{dirty?"Unsaved changes":daySchedules[0]?((savedFirst||savedFirstGuest)&&(savedSecond||savedSecondGuest)?"Saved · Both calls assigned":"Saved · Still in progress"):"Not saved yet"}</p><button className="primary-button mt-4 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall()}>{saving?"Saving…":"Save day"}</button><button className="secondary-button mt-2 w-full" disabled={saving||loading||timeOff===null} onClick={()=>saveCall(true)}>Save & next day</button></>:<p className="empty-note">View-only access</p>}
+
        </section>
-       {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Time-off labels are for your manual planning; automatic tools do not yet apply these ranges. Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
+       {role==="admin"&&<details className="planning-tools"><summary>Automatic tools <span aria-hidden="true">+</span></summary><div className="planning-content"><p>Time-off labels are for your manual planning; automatic tools do not yet apply who is off. Optional: generate a call schedule for <strong>{monthLabel}</strong>. You can build and save your own schedule above without these tools.</p><label className="flex items-center gap-2"><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>Replace existing assignments</label><button className="primary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateMonth}>{generating?"Generating…":"Generate month"}</button><button className="secondary-button" disabled={generating||isGeneratingYear||loading||saving||dirty} onClick={generateFullYear}>{isGeneratingYear?"Generating year…":`Generate ${year}`}</button><button className="secondary-button" disabled={!rioFacilityId||generating||isGeneratingYear||saving||dirty} onClick={async()=>{setSuggestionStatus("Checking for suggestions…");try{const result=await suggestScheduleFixes(rioFacilityId!,year,month,getToken());setSuggestions(result.suggestions);setSuggestionStatus(result.suggestions.length?`${result.suggestions.length} suggestions ready to review.`:"No valid suggestions returned.");}catch(e){setSuggestionStatus((e as Error).message);}}}>Review suggestions</button></div></details>}
       </aside>
      </div>
-     <TimeOffPanel facility={rioFacilityId} doctors={mdMap} selectedDate={selectedDate} canEdit={role==="admin"} onChange={setTimeOff}/>
-     <details id="call-totals" className="surface-card rounded-xl p-4 mt-4"><summary className="cursor-pointer py-2 font-semibold">Monthly call totals · {monthLabel}</summary><p className="text-sm text-slate-600 my-3">Counts update when you save. Partial days count toward the assigned call.</p><div className="overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">Saved call assignments by doctor for {monthLabel}</caption><thead><tr><th scope="col" className="text-left p-3">Doctor</th><th scope="col">1st call</th><th scope="col">2nd call</th><th scope="col">Total</th></tr></thead><tbody>{Object.entries(mdMap).map(([id,name])=>{const rows=hydratedSchedules.filter(r=>r.date.startsWith(`${year}-${String(month).padStart(2,'0')}`));const first=rows.filter(r=>r.callAssignments?.first_call_md_id===Number(id)).length,second=rows.filter(r=>r.callAssignments?.second_call_md_id===Number(id)).length;return <tr key={id} className="border-t"><th scope="row" className="text-left p-3 font-normal">{name}</th><td className="text-center">{first}</td><td className="text-center">{second}</td><td className="text-center font-semibold">{first+second}</td></tr>;})}</tbody></table></div></details>
+     <details id="call-totals" className="surface-card rounded-xl p-4 mt-4"><summary className="cursor-pointer py-2 font-semibold">Monthly call totals · {monthLabel}</summary><p className="text-sm text-slate-600 my-3">Counts update when you save. Partial days count toward the assigned call.</p><div className="overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">Saved call assignments by doctor for {monthLabel}</caption><thead><tr><th scope="col" className="text-left p-3">Doctor</th><th scope="col">1st call</th><th scope="col">2nd call</th><th scope="col">Total</th></tr></thead><tbody>{(() => {
+       const rows = hydratedSchedules.filter(r=>r.date.startsWith(`${year}-${String(month).padStart(2,'0')}-`));
+       const totals = new Map<string,{name:string;first:number;second:number}>();
+       Object.entries(mdMap).filter(([id])=>!inactiveMdIds.includes(Number(id))).forEach(([id,name])=>totals.set(`md:${id}`,{name,first:0,second:0}));
+       rows.forEach(row=>{(['first','second'] as const).forEach(call=>{const id=row.callAssignments?.[call==='first'?'first_call_md_id':'second_call_md_id'];const guest=row.callAssignments?.[call==='first'?'first_call_guest_name':'second_call_guest_name'];if(!id&&!guest)return;const key=id?`md:${id}`:`guest:${guest!.toLocaleLowerCase()}`;const item=totals.get(key)||{name:id?mdMap[id]||String(id):`${guest} (guest)`,first:0,second:0};item[call]++;totals.set(key,item);});});
+       return [...totals.entries()].map(([key,item])=><tr key={key} className="border-t"><th scope="row" className="text-left p-3 font-normal">{item.name}</th><td className="text-center">{item.first}</td><td className="text-center">{item.second}</td><td className="text-center font-semibold">{item.first+item.second}</td></tr>);
+     })()}</tbody></table></div></details>
      {suggestionStatus&&<p role="status" className="status-message">{suggestionStatus}</p>}
       {suggestions.length > 0 && (
         <div className="surface-card rounded-xl p-4">
