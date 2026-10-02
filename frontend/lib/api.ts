@@ -188,7 +188,7 @@ export async function saveStaffing(site: Facility, md: number, crna: number, tok
  return response.json();
 }
 
-export async function saveManualCallDay(payload: {date:string;facility_id:number;first_call_md_id:number|null;second_call_md_id:number|null;expected_first_call_md_id:number|null;expected_second_call_md_id:number|null}, token?:string) {
+export async function saveManualCallDay(payload: {date:string;facility_id:number;first_call_md_id:number|null;second_call_md_id:number|null;expected_first_call_md_id:number|null;expected_second_call_md_id:number|null;first_call_guest_name?:string|null;second_call_guest_name?:string|null;expected_first_call_guest_name?:string|null;expected_second_call_guest_name?:string|null;off_md_ids?:number[];expected_off_md_ids?:number[]}, token?:string) {
  const response = await fetchApi('/api/v1/schedules/manual/day',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
  const data = await response.json().catch(()=>null);
  if(!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : 'This day could not be saved. Your selections are still here; please try again.');
@@ -213,8 +213,4 @@ export async function timeOffRequest(facility:number, token:string|undefined, en
  const path=removeId?`/manual/time-off/${removeId}`:'/manual/time-off';
  const response=await fetchApi(`/api/v1/schedules${path}${!entry&&!removeId?`?facility_id=${facility}`:''}`,{method:removeId?'DELETE':entry?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},...(entry?{body:JSON.stringify(entry)}:{}),cache:'no-store'});
  const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Unable to save time off. Please try again.');return result;
-}
-export async function addGuestMd(name:string,token?:string):Promise<StaffMember> {
- const response=await fetchApi('/api/v1/mds/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({name,active:true,specialties:['Guest']})});
- if(!response.ok)throw new Error('The doctor could not be added. Check the name and try again.');return response.json();
 }
