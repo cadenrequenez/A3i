@@ -838,38 +838,76 @@ def ai_suggest_fixes_route(
     )
 
 
-@router.put("/manual/day", response_model=schemas.ScheduleOut)
+@router.put("/manual/day", response_model=schemas.ManualCallDayOut)
 def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_db), _user=Depends(get_current_admin)):
+    from app.models.schedule import ScheduleTimeOff
     facility = db.query(models.Facility).filter_by(id=data.facility_id).first()
     if not facility or facility.site_name != "Rio Grande Regional Hospital":
-        raise HTTPException(status_code=400, detail="Select the Rio Grande call schedule.")
+        raise HTTPException(400, "Select the Rio Grande call schedule.")
     ids = [data.first_call_md_id, data.second_call_md_id]
-    if ids[0] is not None and ids[0] == ids[1]:
-        raise HTTPException(status_code=422, detail="Choose two different doctors for first and second call.")
+    names = [data.first_call_guest_name, data.second_call_guest_name]
+    if any(md_id is not None and name is not None for md_id, name in zip(ids, names)):
+        raise HTTPException(422, "Choose a roster doctor or type a guest name for each call.")
     assigned_ids = [md_id for md_id in ids if md_id is not None]
-    doctors = db.query(models.MD).filter(models.MD.id.in_(assigned_ids), models.MD.active.is_(True)).all()
-    if len(doctors) != len(assigned_ids):
-        raise HTTPException(status_code=422, detail="Choose active doctors from the roster.")
-    # Serialize concurrent creates for the same facility/day, including an empty day.
+    doctors = db.query(models.MD).filter(models.MD.id.in_(assigned_ids)).all()
+    by_id = {md.id: md for md in doctors}
+    if len(doctors) != len(set(assigned_ids)):
+        raise HTTPException(422, "Choose doctors from the roster, or type a guest name.")
+    display_names = [(by_id[md_id].name if md_id is not None else name) for md_id, name in zip(ids, names)]
+    if all(display_names) and display_names[0].casefold() == display_names[1].casefold():
+        raise HTTPException(422, "Choose different doctors for first and second call.")
+    # Serialize edits to ranges across different days before taking the day lock.
+    if data.off_md_ids is not None:
+        db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": -data.facility_id, "day": _user.id})
     db.execute(text("SELECT pg_advisory_xact_lock(:facility, :day)"), {"facility": data.facility_id, "day": data.date.toordinal()})
     rows = db.query(models.Schedule).filter_by(owner_id=_user.id, facility_id=data.facility_id, date=data.date).with_for_update().all()
     if len(rows) > 1:
-        raise HTTPException(status_code=409, detail="This day has duplicate saved records and needs review before editing.")
+        raise HTTPException(409, "This day has duplicate saved records and needs review before editing.")
     row = rows[0] if rows else None
     current = (row.call_assignments or {}) if row else {}
-    current_pair = (current.get("first_call_md_id"), current.get("second_call_md_id"))
-    expected = (data.expected_first_call_md_id, data.expected_second_call_md_id)
-    requested = tuple(ids)
+    keys = ("first_call_md_id", "second_call_md_id", "first_call_guest_name", "second_call_guest_name")
+    current_pair = tuple(current.get(key) for key in keys)
+    expected = (data.expected_first_call_md_id, data.expected_second_call_md_id, data.expected_first_call_guest_name, data.expected_second_call_guest_name)
+    requested = (*ids, *names)
     if current_pair != expected and current_pair != requested:
-        raise HTTPException(status_code=409, detail="This day changed since you opened it. Refresh to review the latest assignments before saving.")
+        raise HTTPException(409, "This day changed since you opened it. Refresh to review the latest assignments before saving.")
+    for index, md_id in enumerate(ids):
+        if md_id is not None and not by_id[md_id].active and current_pair[index] != md_id:
+            raise HTTPException(422, "Choose active doctors from the roster.")
+    off_rows = db.query(ScheduleTimeOff).filter_by(owner_id=_user.id, facility_id=data.facility_id).with_for_update().all()
+    if data.off_md_ids is not None:
+        covering = [r for r in off_rows if r.start_date <= data.date <= r.end_date]
+        current_off = {r.md_id for r in covering}
+        requested_off = set(data.off_md_ids)
+        if current_off != set(data.expected_off_md_ids or []) and current_off != requested_off:
+            raise HTTPException(409, "Who is off changed since you opened this day. Refresh before saving.")
+        off_doctors = db.query(models.MD).filter(models.MD.id.in_(requested_off)).all()
+        if len(off_doctors) != len(requested_off) or any(not md.active and md.id not in current_off for md in off_doctors):
+            raise HTTPException(422, "Choose doctors from the active roster for time off.")
+        for entry in covering:
+            if entry.md_id in requested_off:
+                continue
+            # Remove this day only; keep the remainder of earlier range entries.
+            if entry.start_date < data.date and entry.end_date > data.date:
+                db.add(ScheduleTimeOff(owner_id=_user.id, facility_id=data.facility_id, md_id=entry.md_id, start_date=data.date + timedelta(days=1), end_date=entry.end_date))
+                entry.end_date = data.date - timedelta(days=1)
+            elif entry.start_date < data.date:
+                entry.end_date = data.date - timedelta(days=1)
+            elif entry.end_date > data.date:
+                entry.start_date = data.date + timedelta(days=1)
+            else:
+                db.delete(entry)
+        for md_id in requested_off - current_off:
+            db.add(ScheduleTimeOff(owner_id=_user.id, facility_id=data.facility_id, md_id=md_id, start_date=data.date, end_date=data.date))
     if row is None:
         row = models.Schedule(owner_id=_user.id, date=data.date, facility_id=data.facility_id, crna_ids=[])
         db.add(row)
     row.md_ids = assigned_ids
-    row.call_assignments = {**current, "first_call_md_id": ids[0], "second_call_md_id": ids[1]}
+    row.call_assignments = {**current, **dict(zip(keys, requested))}
     db.commit()
     db.refresh(row)
-    return row
+    off_entries = db.query(ScheduleTimeOff).filter_by(owner_id=_user.id, facility_id=data.facility_id).order_by(ScheduleTimeOff.start_date, ScheduleTimeOff.id).all()
+    return {**schemas.ScheduleOut.model_validate(row).model_dump(), "time_off_entries": off_entries}
 
 
 def _manual_month_rows(data, db, owner_id):
