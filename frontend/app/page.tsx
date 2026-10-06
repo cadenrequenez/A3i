@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import ScheduleBoard from "../components/ScheduleBoard";
+import ScheduleWorkspace from "../components/ScheduleWorkspace";
 import StaffList from "../components/StaffList";
 import SitesList from "../components/SitesList";
 import AnalyticsPanel from "../components/AnalyticsPanel";
@@ -31,7 +31,7 @@ export default function DashboardPage() {
   </aside>
   <main id="workspace-content" className="workspace-main" tabIndex={-1}>
    <header className="workspace-masthead"><div><p className="masthead-kicker">Your scheduling workspace</p><p className="workspace-owner">{profile?.display_name || profile?.username || "Welcome to A3i"}{profile?.title && <span>{profile.title}</span>}</p></div><span className="workspace-privacy"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Your private workspace</span></header>
-   <div hidden={activeTab!=="Schedule"}><ScheduleBoard accountKey={profile?.username}/></div>
+   <div hidden={activeTab!=="Schedule"}><ScheduleWorkspace accountKey={profile?.username}/></div>
    {activeTab!=="Schedule"&&<div className="workspace-section"><p className="eyebrow">A3i workspace</p><h1 className="section-title">{activeTab === "Analytics" ? "Team workload" : activeTab === "Sites" ? "Your facilities" : "Your team"}</h1>{activeTab==="Staff"?<StaffList/>:activeTab==="Sites"?<SitesList/>:<AnalyticsPanel/>}</div>}
   </main>
  </div>;

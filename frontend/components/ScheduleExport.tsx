@@ -6,11 +6,12 @@ import type { ScheduleEntry } from "../lib/types";
 import { getToken } from "../lib/auth";
 import { scheduleWorkbook } from "../lib/scheduleWorkbook";
 
-type Props = {offForDate?:(date:string)=>string[];year:number;month:number;facility:string;schedules:ScheduleEntry[];disabled:boolean};
-export default function ScheduleExport({offForDate=()=>[],year,month,facility,schedules,disabled}:Props) {
+type Props = {offForDate?:(date:string)=>string[];year:number;month:number;facility:string;schedules:ScheduleEntry[];disabled:boolean;template?:boolean;staffing?:string};
+export default function ScheduleExport({offForDate=()=>[],year,month,facility,schedules,disabled,template=false,staffing}:Props) {
  const [open,setOpen]=useState(false);
  const label=new Date(year,month-1,1).toLocaleDateString(undefined,{month:"long",year:"numeric"});
  const prefix=`${year}-${String(month).padStart(2,"0")}`;
+ const facilitySlug=facility.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
  const days=Array.from({length:new Date(year,month,0).getDate()},(_,i)=>{
   const date=`${prefix}-${String(i+1).padStart(2,"0")}`;
   const row=schedules.find(s=>s.date===date && s.facility===facility);
@@ -23,17 +24,18 @@ export default function ScheduleExport({offForDate=()=>[],year,month,facility,sc
  const weeks=Array.from({length:cells.length/7},(_,i)=>cells.slice(i*7,i*7+7));
  function spreadsheet() {
   getToken();
-  const bytes = scheduleWorkbook(year, month, facility, days);
+  const bytes = scheduleWorkbook(year, month, facility, days, {template,staffing});
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
-  const link=document.createElement('a');link.href=url;link.download=`A3i-call-schedule-${prefix}.xlsx`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const link=document.createElement('a');link.href=url;link.download=`A3i-${facilitySlug}-${prefix}${template?'-blank':''}.xlsx`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
 
- return <><div className="flex flex-wrap gap-2 mb-4"><button className="secondary-button" disabled={disabled} onClick={()=>{getToken();setOpen(true);}}>Print / Save PDF</button><button className="secondary-button" disabled={disabled} onClick={spreadsheet}>Download Excel calendar</button><span className="text-sm text-slate-600 self-center">Exports use saved assignments. Save your edits first.</span></div>
+ return <><div className="flex flex-wrap gap-2 mb-4"><button className="secondary-button" disabled={disabled} onClick={()=>{getToken();setOpen(true);}}>Print / Save PDF</button><button className="secondary-button" disabled={disabled} onClick={spreadsheet}>Download Excel calendar</button><span className="text-sm text-slate-600 self-center">{template?'Download a blank calendar. No assignments will be created.':'Exports use saved assignments. Save your edits first.'}</span></div>
  {open&&createPortal(<div className="schedule-export-overlay" role="dialog" aria-modal="true" aria-label="Monthly schedule print preview">
-  <div className="schedule-export-actions"><button className="primary-button" onClick={()=>{getToken();window.print();}}>Print or save as PDF</button><button className="secondary-button" autoFocus onClick={()=>setOpen(false)}>Close preview</button><p>Choose Landscape and “Save as PDF” in the print dialog. Turn off headers and footers for a clean copy.</p></div>
-  <article className="schedule-export-sheet"><header><div><p>A3i · {facility}</p><h1>{label}</h1><h2>First & second call schedule</h2></div><div><strong>{missing?`Work in progress · ${missing} unfinished days`:'All days assigned · Saved copy'}</strong><p>Exported {new Date().toLocaleDateString()}</p></div></header>
-   <table><thead><tr>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><th key={d}>{d}</th>)}</tr></thead><tbody>{weeks.map((week,i)=><tr key={i}>{week.map((day,j)=><td key={j} className={day?'':'empty'}>{day&&<><b>{day.day}</b><p><small>1st</small> {day.first}</p><p><small>2nd</small> {day.second}</p>{day.off.map(name=><p key={name}><small>OFF</small> {name}</p>)}</>}</td>)}</tr>)}</tbody></table>
-   <footer>1st = first call · 2nd = second call. This is a snapshot of saved assignments; check A3i for subsequent changes.</footer>
+  <div className="schedule-export-actions"><button className="primary-button" onClick={()=>{getToken();const title=document.title;document.title=`A3i — ${facility} — ${label}${template?' — Blank calendar':''}`;window.print();document.title=title;}}>Print or save as PDF</button><button className="secondary-button" autoFocus onClick={()=>setOpen(false)}>Close preview</button><p>Use Landscape, enable background graphics, and turn off browser headers and footers.</p></div>
+  <article className={`schedule-export-sheet weeks-${weeks.length}`}><header><div className="export-heading"><span className="export-logo"><img src="/logos/a3i-navy.png" alt="A3i"/></span><div><p>{facility}{template?' · Pediatrics':''}</p><h1>{label}</h1><h2>{template?'Pediatric call calendar':'First & second call schedule'}</h2></div></div><div className="export-meta"><strong>{template?'Blank template · No assignments':missing?`Draft · ${missing} unfinished ${missing===1?"day":"days"}`:'All days assigned · Saved copy'}</strong><p>Exported {new Date().toLocaleDateString()}</p>{staffing&&<p>Daily staffing target: {staffing}</p>}</div></header>
+   <div className="export-legend">{template?'Call positions will be configured before assigning staff.':<><span className="export-first-key">1st · First call</span><span>2nd · Second call</span><span className="export-off-key">Off · Not scheduled</span></>}</div>
+   <table><thead><tr>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><th scope="col" key={d}>{d}</th>)}</tr></thead><tbody>{weeks.map((week,i)=><tr key={i}>{week.map((day,j)=><td key={j} className={`${day?'':'empty'} ${j===0||j===6?'export-weekend':''}`}>{day&&<><b className="export-date">{day.day}</b>{template?<><p className="export-template-line"><small>Call</small><span/></p><p className="export-template-line"><small>Off</small><span/></p></>:<><p className={`export-call export-first ${day.first==='Unassigned'?'export-unassigned':''}`}><small>1st</small><span>{day.first==='Unassigned'?'—':day.first}</span></p><p className={`export-call ${day.second==='Unassigned'?'export-unassigned':''}`}><small>2nd</small><span>{day.second==='Unassigned'?'—':day.second}</span></p>{day.off.length>0&&<div className="export-off">{day.off.map(name=><p key={name}><small>Off</small><span>{name}</span></p>)}</div>}</>}</>}</td>)}</tr>)}</tbody></table>
+   <footer><span>{template?'Blank template for planning. Daily staffing targets do not define overnight call coverage.':'Saved schedule snapshot. Partial days stay blank; check A3i for later changes.'}</span><strong>a3isolution.com</strong></footer>
   </article></div>,document.body)}
  </>;
 }

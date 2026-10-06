@@ -30,7 +30,7 @@ function formatIsoDate(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-export default function ScheduleBoard({accountKey}:{accountKey?:string}) {
+export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accountKey?:string;onNavigationLockChange?:(locked:boolean)=>void}) {
   const [focus, setFocus] = useState<CallFocus>("all");
   const [resumeDate, setResumeDate] = useState<string|null>(null);
   const [timeOff,setTimeOff] = useState<TimeOff[]|null>(null);
@@ -296,6 +296,7 @@ export default function ScheduleBoard({accountKey}:{accountKey?:string}) {
       if(next){const tomorrow=parseIsoDate(selectedDate);tomorrow.setDate(tomorrow.getDate()+1);const date=formatIsoDate(tomorrow);setSelectedDate(date);setMonth(Number(date.slice(5,7)));setYear(Number(date.slice(0,4)));}
     }catch(error){setStatus((error as Error).message);}finally{setSaving(false);}
   }
+  useEffect(() => { onNavigationLockChange?.(dirty || saving || loading || generating || isGeneratingYear); }, [dirty, saving, loading, generating, isGeneratingYear, onNavigationLockChange]);
   return <div className="schedule-workspace">
     <header className="schedule-heading"><div><p className="eyebrow">{RIO_FACILITY}</p><h1>{monthLabel}</h1><p className="schedule-intro">Build it your way. Save a little, come back anytime.</p></div>
      <div className="schedule-heading-actions"><label className="month-picker"><span className="sr-only">Schedule month</span><input aria-label="Schedule month" type="month" min="2000-01" max="2100-12" disabled={saving||loading} value={`${year}-${String(month).padStart(2,"0")}`} onChange={e=>{if(e.target.value)chooseDate(`${e.target.value}-01`);}}/></label>
