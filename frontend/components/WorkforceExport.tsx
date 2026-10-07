@@ -196,10 +196,10 @@ export default function WorkforceExport({
     : "Preview · Saved draft";
   const audienceLabel =
     audience === "office"
-      ? "Private · Dad & office staff"
+      ? "Private office copy"
       : audience === "provider"
-        ? "Provider copy · Off excluded"
-        : "Hospital posting · Site only";
+        ? "Provider copy"
+        : "Hospital copy";
   function reset() {
     setIssue(null);
     setError("");
@@ -287,11 +287,11 @@ export default function WorkforceExport({
           >
             {!relief && (
               <option value="hospital">
-                Hospital posting · This site only
+                Hospital copy
               </option>
             )}
-            <option value="provider">Providers · No Off names</option>
-            <option value="office">Dad & office staff · Includes Off</option>
+            <option value="provider">Provider copy</option>
+            <option value="office">Private office copy</option>
           </select>
         </label>
         {audience !== "office" && (
@@ -352,8 +352,6 @@ export default function WorkforceExport({
           {issue
             ? "This stored copy stays unchanged when you edit the draft."
             : "Review this preview before saving an issued copy. Partial days remain blank."}{" "}
-          {audience !== "office" &&
-            "Off names and private office notes are excluded from both downloads."}
         </p>
         {error && (
           <p role="alert" className="wf-error">

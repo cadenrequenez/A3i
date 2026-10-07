@@ -1069,7 +1069,7 @@ export default function WorkforceBoard({
                       <section className="wd-off">
                         <header>
                           <h3>Off for this day</h3>
-                          <span>Dad & office staff only</span>
+                          <span>Office staff only</span>
                         </header>
                         <div className="wd-off-selects">
                           <label>

@@ -96,9 +96,9 @@ export default function ScheduleExport({
             value={audience}
             onChange={(e) => setAudience(e.target.value)}
           >
-            <option value="hospital">Hospital · No Off names</option>
-            <option value="provider">Providers · No Off names</option>
-            <option value="office">Dad & office staff · Includes Off</option>
+            <option value="hospital">Hospital copy</option>
+            <option value="provider">Provider copy</option>
+            <option value="office">Private office copy</option>
           </select>
         </label>
         <button
@@ -194,10 +194,10 @@ export default function ScheduleExport({
                   </strong>
                   <p>
                     {audience === "office"
-                      ? "Private · Dad & office staff"
+                      ? "Private office copy"
                       : audience === "hospital"
-                        ? "Hospital posting · Off excluded"
-                        : "Provider copy · Off excluded"}
+                        ? "Hospital copy"
+                        : "Provider copy"}
                   </p>
                   <p>Exported {new Date().toLocaleDateString()}</p>
                   {staffing && <p>Daily staffing target: {staffing}</p>}

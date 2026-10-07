@@ -108,7 +108,7 @@ export function scheduleWorkbook(
     );
   const note = template
     ? `Driscoll Anesthesia On-Call Schedule · Two blank call entries per day.${options.staffing ? ` Daily staffing target: ${options.staffing}.` : ""}`
-    : `${contacts ? `1st Call ${contacts.first} · 2nd Call ${contacts.second}` : "1st = first call · 2nd = second call"} · ${office ? "Private office copy · Includes Off" : "Off excluded"}`;
+    : `${contacts ? `1st Call ${contacts.first} · 2nd Call ${contacts.second}` : "1st = first call · 2nd = second call"} · ${office ? "Private office copy" : options.audience === "provider" ? "Provider copy" : "Hospital copy"}`;
   let calendar = title + row(3, cell("A3", note, 11), 28);
   calendar += row(
     4,
