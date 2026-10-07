@@ -654,26 +654,27 @@ export default function WorkforceBoard({
                   role="group"
                   aria-label={`${selected ? shortSite(selected) : "Rio relief"} ${view} calendar`}
                 >
-                  {(view === "week" ? currentWeek : cells).map((d, i) =>
-                    d ? (
-                      <button
-                        className={`wd-date ${d === day ? "selected" : ""}`}
-                        key={d}
-                        disabled={navigating}
-                        aria-label={`Edit workforce ${workforceDate(year, month, d)}`}
-                        onClick={() => navigate(d)}
-                      >
-                        <span className="wd-weekday">
-                          {new Date(year, month - 1, d).toLocaleDateString(
-                            "en-US",
-                            { weekday: "short" },
-                          )}
-                        </span>
-                        {summary(d)}
-                      </button>
-                    ) : (
-                      <div className="wd-date-empty" key={`empty-${i}`} />
-                    ),
+                  {(view === "week" ? currentWeek.filter(Boolean) : cells).map(
+                    (d, i) =>
+                      d ? (
+                        <button
+                          className={`wd-date ${d === day ? "selected" : ""}`}
+                          key={d}
+                          disabled={navigating}
+                          aria-label={`Edit workforce ${workforceDate(year, month, d)}`}
+                          onClick={() => navigate(d)}
+                        >
+                          <span className="wd-weekday">
+                            {new Date(year, month - 1, d).toLocaleDateString(
+                              "en-US",
+                              { weekday: "short" },
+                            )}
+                          </span>
+                          {summary(d)}
+                        </button>
+                      ) : (
+                        <div className="wd-date-empty" key={`empty-${i}`} />
+                      ),
                   )}
                 </div>
               </>

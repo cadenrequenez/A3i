@@ -1706,3 +1706,24 @@ dialog.wf-modal > section {
     margin: 6px 0 !important;
   }
 }
+
+/* Partial weeks use their available dates without empty leading cards. */
+.wd-week {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.wd-overview .wd-date {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+@media (max-width: 1250px) {
+  .wd-month .wd-date-empty {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .wd-week {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
