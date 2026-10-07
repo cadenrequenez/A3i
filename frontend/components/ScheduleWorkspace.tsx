@@ -6,7 +6,7 @@ import { fetchFacilities } from "../lib/api";
 import { getToken } from "../lib/auth";
 import type { Facility } from "../lib/types";
 
-export default function ScheduleWorkspace({ accountKey }: { accountKey?: string }) {
+export default function ScheduleWorkspace({ accountKey, onOpenWorkforce }: { accountKey?: string; onOpenWorkforce:()=>void }) {
   const [calendar, setCalendar] = useState<"rio" | "driscoll">("rio");
   const [locked, setLocked] = useState(true);
   const [driscoll, setDriscoll] = useState<Facility | null>(null);
@@ -23,6 +23,6 @@ export default function ScheduleWorkspace({ accountKey }: { accountKey?: string 
       {locked && <small>Finish loading or save your day before switching calendars.</small>}
     </div>
     <div hidden={calendar !== "rio"}><ScheduleBoard accountKey={accountKey} onNavigationLockChange={setLocked}/></div>
-    <div hidden={calendar !== "driscoll"}><DriscollCalendar facility={driscoll}/></div>
+    <div hidden={calendar !== "driscoll"}><DriscollCalendar facility={driscoll} onOpenWorkforce={onOpenWorkforce}/></div>
   </>;
 }

@@ -1,3 +1,4 @@
+import "./workforce.css";
 import "./globals.css";
 import "./workspace.css";
 import "./schedule-exports.css";

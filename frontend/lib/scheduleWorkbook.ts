@@ -3,7 +3,7 @@ const escape = (s: string) => s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').repl
 const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 // A stored ZIP archive: workbook exports stay in the browser with no external service.
-function zip(files: Record<string,string>) {
+export function zip(files: Record<string,string>) {
  const enc=new TextEncoder(), parts:Uint8Array[]=[], directory:Uint8Array[]=[]; let offset=0;
  for(const [name,text] of Object.entries(files)) {
   const n=enc.encode(name), data=enc.encode(text); let crc=0xffffffff;

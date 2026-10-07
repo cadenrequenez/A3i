@@ -8,7 +8,7 @@ import type {
 
 import { API_BASE_URL } from "./connection";
 
-async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+export async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
   if (response.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("a3i_token");
