@@ -4,6 +4,7 @@ export type WorkforceSettings = {
   revision: number;
   rosters: Record<string, RosterMember[]>;
   crnas: RosterMember[];
+  site_crnas?: Record<string, RosterMember[]>;
 };
 export type WorkforceEntry = {
   kind: "md" | "crna";
@@ -12,7 +13,7 @@ export type WorkforceEntry = {
   guest: boolean;
   site_id: number | null;
   home_site_id: number | null;
-  status: "working" | "off" | "admin";
+  status: "working" | "off" | "admin" | "post_call";
   note: string;
 };
 export type WorkforceSiteDay = {
@@ -47,6 +48,78 @@ export type WorkforceHistory = {
   payload: WorkforcePayload;
   created_at: string;
 };
+export type WorkforceAudience = "hospital" | "provider" | "office";
+export type WorkforceIssue = {
+  id: number;
+  year: number;
+  month: number;
+  section: string;
+  audience: WorkforceAudience;
+  revision: number;
+  created_at: string;
+  snapshot: { month: WorkforceMonth; sites: Facility[] };
+};
+import type { Facility } from "./types";
+
+export function workforceCopy(
+  month: WorkforceMonth,
+  sites: Facility[],
+  section: string,
+  audience: WorkforceAudience,
+  includeNotes = false,
+) {
+  const copy = structuredClone(month),
+    driscoll = sites
+      .filter((s) => /driscoll/i.test(s.site_name))
+      .map((s) => s.id);
+  const selected =
+    section === "relief"
+      ? sites
+      : sites.filter((s) => String(s.id) === section);
+  if (section === "relief" && audience === "hospital")
+    throw new Error("Choose a site for a hospital copy.");
+  for (const day of copy.days) {
+    day.payload.entries = day.payload.entries
+      .filter((e) => {
+        if (e.status === "off") return audience === "office";
+        if (e.status === "admin" && audience !== "office") return false;
+        return section === "relief"
+          ? e.kind === "crna" &&
+              !driscoll.includes(e.home_site_id ?? e.site_id ?? -1)
+          : String(e.site_id) === section;
+      })
+      .map((e) =>
+        audience === "office"
+          ? e
+          : {
+              ...e,
+              key: null,
+              guest: true,
+              home_site_id: null,
+              note: includeNotes ? e.note : "",
+            },
+      );
+    day.payload.sites = Object.fromEntries(
+      selected.map((s) => [
+        String(s.id),
+        {
+          ...(day.payload.sites[s.id] || {
+            closed: false,
+            md: null,
+            crna: null,
+            note: "",
+          }),
+          ...(!includeNotes && audience !== "office" ? { note: "" } : {}),
+        },
+      ]),
+    );
+    if (audience !== "office") {
+      day.payload.note = "";
+      day.warnings = [];
+    }
+  }
+  return { month: copy, sites: selected };
+}
 export const emptyWorkforceDay = (): WorkforcePayload => ({
   entries: [],
   sites: {},

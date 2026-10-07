@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, get_current_admin
 from app.models import MD, CRNA, Facility, User
-from app.models.workforce import WorkforceSettings, WorkforceDay, WorkforceHistory, WorkforceMonth
+from app.models.workforce import WorkforceSettings, WorkforceDay, WorkforceHistory, WorkforceMonth, WorkforceIssue
 
 router = APIRouter(prefix="/workforce", tags=["workforce"])
 
@@ -23,6 +23,7 @@ class SettingsWrite(StrictModel):
     expected_revision: int = Field(ge=0)
     rosters: dict[str, list[Member]]
     crnas: list[Member] = Field(max_length=200)
+    site_crnas: dict[str, list[Member]] | None = None
 
 class Entry(StrictModel):
     kind: Literal["md", "crna"]
@@ -31,7 +32,7 @@ class Entry(StrictModel):
     guest: bool = False
     site_id: int | None = None
     home_site_id: int | None = None
-    status: Literal["working", "off", "admin"] = "working"
+    status: Literal["working", "off", "admin", "post_call"] = "working"
     note: str = Field(default="", max_length=250)
 
 class SiteDay(StrictModel):
@@ -66,7 +67,8 @@ def settings_data(db, owner):
     sites = db.query(Facility).order_by(Facility.id).all()
     defaults = {str(s.id): ([] if "driscoll" in s.site_name.lower() else md_members) for s in sites}
     return dict(revision=row.revision if row else 0, rosters={**defaults, **(row.rosters if row else {})},
-                crnas=row.crnas if row else [dict(key=f"crna-{s.id}", name=s.name, active=s.active) for s in db.query(CRNA).order_by(CRNA.id)])
+                crnas=row.crnas if row else [dict(key=f"crna-{s.id}", name=s.name, active=s.active) for s in db.query(CRNA).order_by(CRNA.id)],
+                site_crnas=row.site_crnas if row else {})
 
 
 def sync_rio_md(db, owner, md, *, added=False):
@@ -110,9 +112,9 @@ def put_settings(body: SettingsWrite, db: Session = Depends(get_db), user=Depend
     if body.expected_revision != current["revision"]:
         raise HTTPException(409, "The roster changed in another tab. Reload before saving.")
     valid_sites = {str(s.id) for s in db.query(Facility).all()}
-    if set(body.rosters) - valid_sites or len(body.rosters) > 30:
+    if set(body.rosters) - valid_sites or set(body.site_crnas or {}) - valid_sites or len(body.rosters) > 30:
         raise HTTPException(422, "Unknown facility.")
-    for members in [*body.rosters.values(), body.crnas]:
+    for members in [*body.rosters.values(), body.crnas, *(body.site_crnas or {}).values()]:
         if len(members) > 200 or len({m.key for m in members}) != len(members) or any(not m.name.strip() for m in members):
             raise HTTPException(422, "Use a name and a unique roster key for each person.")
     # The same key identifies the same person across facilities.
@@ -122,6 +124,9 @@ def put_settings(body: SettingsWrite, db: Session = Depends(get_db), user=Depend
             if member.key in names and names[member.key] != member.name.strip():
                 raise HTTPException(422, "The same MD must have the same name across rosters.")
             names[member.key] = member.name.strip()
+    home_keys = [m.key for m in body.crnas] + [m["key"] for members in (current["site_crnas"] if body.site_crnas is None else {k: [m.model_dump() for m in v] for k, v in body.site_crnas.items()}).values() for m in members]
+    if len(home_keys) != len(set(home_keys)):
+        raise HTTPException(422, "Each CRNA has one home roster. Move the daily assignment for transfers.")
     row = db.get(WorkforceSettings, user.id)
     if not row:
         row = WorkforceSettings(owner_id=user.id)
@@ -129,6 +134,8 @@ def put_settings(body: SettingsWrite, db: Session = Depends(get_db), user=Depend
     row.revision = current["revision"] + 1
     row.rosters = {k: [dict(m.model_dump(), name=m.name.strip()) for m in v] for k, v in body.rosters.items()}
     row.crnas = [dict(m.model_dump(), name=m.name.strip()) for m in body.crnas]
+    if body.site_crnas is not None:
+        row.site_crnas = {k: [dict(m.model_dump(), name=m.name.strip()) for m in v] for k, v in body.site_crnas.items()}
     # Membership and coverage expectations can change after review.
     for month in db.query(WorkforceMonth).filter_by(owner_id=user.id).all():
         month.status = "draft"
@@ -149,6 +156,8 @@ def warnings_for(payload, facilities):
     warnings = []
     seen = {}
     for entry in payload.get("entries", []):
+        if entry["status"] == "post_call":
+            continue  # An annotation may accompany the same person's working assignment.
         # Also catch aliases when a roster entry and a guest share a name.
         identity = (entry["kind"], entry["name"].strip().casefold())
         if identity in seen:
@@ -195,13 +204,15 @@ def put_day(day: date, body: DayWrite, db: Session = Depends(get_db), user=Depen
         raise HTTPException(409, "This day changed in another tab. Your edits are still here. Reload the saved day before trying again.")
     config = settings_data(db, user.id)
     md_lookup = {m["key"]: m for members in config["rosters"].values() for m in members}
-    crna_lookup = {m["key"]: m for m in config["crnas"]}
+    crna_lookup = {m["key"]: m for m in [*config["crnas"], *[m for members in config["site_crnas"].values() for m in members]]}
     sites = db.query(Facility).all()
     ids = {s.id for s in sites}
     payload = body.payload.model_dump()
     if set(payload["sites"]) - {str(i) for i in ids}:
         raise HTTPException(422, "Unknown facility.")
     for entry in payload["entries"]:
+        if entry["status"] == "post_call" and entry["kind"] != "md":
+            raise HTTPException(422, "Post-call annotations apply to MDs.")
         if entry["site_id"] not in ids | {None} or entry["home_site_id"] not in ids | {None}:
             raise HTTPException(422, "Unknown facility.")
         if entry["guest"]:
@@ -260,3 +271,91 @@ def put_month_status(year: int, month: int, body: MonthWrite, db: Session = Depe
     marker.revision += 1
     db.commit()
     return month_data(db, user.id, year, month)
+
+
+class IssueWrite(StrictModel):
+    expected_revision: int = Field(ge=0)
+    section: str = Field(max_length=40)
+    audience: Literal["hospital", "provider", "office"] = "hospital"
+    include_notes: bool = False
+
+
+def copy_for_audience(month, facilities, section, audience, include_notes=False):
+    """Return a data-filtered copy, never hidden private fields or other-site sheets."""
+    from copy import deepcopy
+    site_ids = {s.id for s in facilities}
+    driscoll_ids = {s.id for s in facilities if "driscoll" in s.site_name.lower()}
+    if section == "relief":
+        if audience == "hospital":
+            raise HTTPException(422, "Relief is an internal coordination copy. Choose a site for a hospital copy.")
+        selected = facilities
+    else:
+        try:
+            site_id = int(section)
+        except ValueError:
+            raise HTTPException(422, "Choose a facility or relief.")
+        if site_id not in site_ids:
+            raise HTTPException(422, "Unknown facility.")
+        selected = [s for s in facilities if s.id == site_id]
+    result = deepcopy(month)
+    for day in result["days"]:
+        payload = day["payload"]
+        entries = []
+        for entry in payload.get("entries", []):
+            off = entry["status"] == "off"
+            if off:
+                if audience != "office":
+                    continue
+            elif section == "relief":
+                if entry["kind"] != "crna" or entry.get("home_site_id") in driscoll_ids or (entry.get("home_site_id") is None and entry.get("site_id") in driscoll_ids):
+                    continue
+            elif entry.get("site_id") != site_id:
+                continue
+            if entry["status"] == "admin" and audience != "office":
+                continue
+            if audience != "office":
+                entry["key"] = None
+                entry["guest"] = True
+                entry["home_site_id"] = None
+                if not include_notes:
+                    entry["note"] = ""
+            entries.append(entry)
+        payload["entries"] = entries
+        payload["sites"] = {str(s.id): deepcopy(payload.get("sites", {}).get(str(s.id), {})) for s in selected}
+        if audience != "office":
+            payload["note"] = ""
+            day["warnings"] = []
+            for override in payload["sites"].values():
+                if not include_notes:
+                    override["note"] = ""
+    return {"month": result, "sites": [dict(id=s.id, site_name=s.site_name, staffing_requirements=s.staffing_requirements) for s in selected]}
+
+
+def issue_data(row):
+    return dict(id=row.id, year=row.year, month=row.month, section=row.section, audience=row.audience,
+                revision=row.revision, created_at=row.created_at.isoformat(), snapshot=row.snapshot)
+
+
+@router.get("/issues")
+def get_issues(year: int = Query(ge=2000, le=2100), month: int = Query(ge=1, le=12), db: Session = Depends(get_db), user=Depends(get_current_admin)):
+    rows = db.query(WorkforceIssue).filter_by(owner_id=user.id, year=year, month=month).order_by(WorkforceIssue.id.desc()).all()
+    return [issue_data(r) for r in rows]
+
+
+@router.put("/issues/{year}/{month}")
+def issue_month(year: int, month: int, body: IssueWrite, db: Session = Depends(get_db), user=Depends(get_current_admin)):
+    if not 2000 <= year <= 2100 or not 1 <= month <= 12:
+        raise HTTPException(422, "Invalid month.")
+    lock_owner(db, user.id)
+    current = month_data(db, user.id, year, month)
+    if current["revision"] != body.expected_revision:
+        raise HTTPException(409, "The saved month changed. Reload and preview it before issuing a copy.")
+    facilities = db.query(Facility).order_by(Facility.id).all()
+    snapshot = copy_for_audience(current, facilities, body.section, body.audience, body.include_notes)
+    previous = db.query(WorkforceIssue).filter_by(owner_id=user.id, year=year, month=month, section=body.section, audience=body.audience).order_by(WorkforceIssue.revision.desc()).first()
+    row = WorkforceIssue(owner_id=user.id, year=year, month=month, section=body.section, audience=body.audience,
+                         revision=(previous.revision if previous else 0) + 1, snapshot=snapshot)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return issue_data(row)

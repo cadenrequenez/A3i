@@ -67,24 +67,32 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
     (s) => !isRio(s) && !/driscoll/i.test(s.site_name),
   );
   const group = selected === "rio" ? String(rio?.id || "") : selected;
-  const title =
-    selected === "crnas"
-      ? "Shared CRNA pool"
-      : labelFor(
-          sites.find((s) => String(s.id) === group) || {
-            id: 0,
-            site_name: "Rio Grande",
-          },
-        );
+  const isCrnaGroup = selected === "crnas" || selected.startsWith("crnas:");
+  const crnaSite = selected.split(":")[1];
+  const title = isCrnaGroup
+    ? selected === "crnas"
+      ? "Rio CRNA pool"
+      : "Driscoll CRNAs"
+    : labelFor(
+        sites.find((s) => String(s.id) === group) || {
+          id: 0,
+          site_name: "Rio Grande",
+        },
+      );
   const members = settings
     ? selected === "crnas"
       ? settings.crnas
-      : settings.rosters[group] || []
+      : selected.startsWith("crnas:")
+        ? settings.site_crnas?.[crnaSite] || []
+        : settings.rosters[group] || []
     : [];
   const count = (key: string) =>
-    (key === "crnas" ? settings?.crnas : settings?.rosters[key])?.filter(
-      (m) => m.active,
-    ).length || 0;
+    (key === "crnas"
+      ? settings?.crnas
+      : key.startsWith("crnas:")
+        ? settings?.site_crnas?.[key.split(":")[1]]
+        : settings?.rosters[key]
+    )?.filter((m) => m.active).length || 0;
   function choose(key: string) {
     setSelected(key);
     setQuery("");
@@ -104,6 +112,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
           expected_revision: settings!.revision,
           rosters: next.rosters,
           crnas: next.crnas,
+          site_crnas: next.site_crnas || {},
         },
       );
       setSettings(saved);
@@ -134,7 +143,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
     }
     const allMds = Object.values(settings.rosters).flat();
     const existing =
-      selected !== "crnas" && !editor.key
+      !isCrnaGroup && !editor.key
         ? allMds.find((m) => m.name.toLowerCase() === name.toLowerCase())
         : undefined;
     const member = {
@@ -143,7 +152,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
       key:
         editor.key ||
         existing?.key ||
-        `${selected === "crnas" ? "crna" : "md"}-custom-${crypto.randomUUID()}`,
+        `${isCrnaGroup ? "crna" : "md"}-custom-${crypto.randomUUID()}`,
     };
     const upsert = (list: RosterMember[]) =>
       list.some((m) => m.key === member.key)
@@ -151,6 +160,11 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
         : [...list, member];
     const next = structuredClone(settings);
     if (selected === "crnas") next.crnas = upsert(next.crnas);
+    else if (isCrnaGroup)
+      next.site_crnas = {
+        ...next.site_crnas,
+        [crnaSite]: upsert(next.site_crnas?.[crnaSite] || []),
+      };
     else {
       // A clinician may belong to both facilities; keep their name consistent.
       next.rosters = Object.fromEntries(
@@ -175,6 +189,11 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
     const update = (list: RosterMember[]) =>
       list.map((m) => (m.key === member.key ? { ...m, active: false } : m));
     if (selected === "crnas") next.crnas = update(next.crnas);
+    else if (isCrnaGroup)
+      next.site_crnas = {
+        ...next.site_crnas,
+        [crnaSite]: update(next.site_crnas?.[crnaSite] || []),
+      };
     else next.rosters[group] = update(next.rosters[group] || []);
     void persist(
       next,
@@ -197,13 +216,20 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
     <section className="team-rosters" aria-label="Team rosters">
       <p className="team-intro">
         All your rosters, in one place. Rio Grande and Driscoll have separate MD
-        teams. CRNAs share one pool for daily staffing and transfers.
+        teams. The Rio CRNA pool handles ASC and temporary transfers. Driscoll’s
+        regular CRNAs have their own roster.
       </p>
       <nav className="team-roster-nav" aria-label="Choose team roster">
         {navButton("rio", "Rio Grande MDs", String(rio?.id || ""))}
         {driscoll &&
           navButton(String(driscoll.id), "Driscoll MDs", String(driscoll.id))}
-        {navButton("crnas", "CRNA pool", "crnas")}
+        {navButton("crnas", "Rio CRNA pool", "crnas")}
+        {driscoll &&
+          navButton(
+            `crnas:${driscoll.id}`,
+            "Driscoll CRNAs",
+            `crnas:${driscoll.id}`,
+          )}
       </nav>
       {otherSites.length > 0 && (
         <details className="team-other-sites">
@@ -251,14 +277,12 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
           <header className="team-roster-heading">
             <div>
               <p className="eyebrow">
-                {selected === "crnas"
-                  ? "Across your facilities"
-                  : "Facility roster"}
+                {isCrnaGroup ? "Home CRNA roster" : "Facility roster"}
               </p>
               <h2>{title}</h2>
               <p>
-                {selected === "crnas"
-                  ? "Assign CRNAs to any site and move them as the day changes."
+                {isCrnaGroup
+                  ? "Home rosters stay separate. Change the daily assignment for a temporary transfer."
                   : "Only this facility’s MDs appear in its daily staffing dropdown."}
               </p>
             </div>
@@ -272,7 +296,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
                   setEditor({ key: "", name: "", active: true });
                 }}
               >
-                Add {selected === "crnas" ? "CRNA" : "MD"}
+                Add {isCrnaGroup ? "CRNA" : "MD"}
               </button>
             )}
           </header>
@@ -301,8 +325,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
               onSubmit={saveMember}
             >
               <h3>
-                {editor.key ? "Edit" : "Add"}{" "}
-                {selected === "crnas" ? "CRNA" : "MD"}
+                {editor.key ? "Edit" : "Add"} {isCrnaGroup ? "CRNA" : "MD"}
               </h3>
               <label>
                 Name

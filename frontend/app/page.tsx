@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ScheduleWorkspace from "../components/ScheduleWorkspace";
 import WorkforceBoard from "../components/WorkforceBoard";
 import TeamRoster from "../components/TeamRoster";
@@ -27,7 +27,27 @@ export default function DashboardPage() {
   }, []);
   const [rosterVersion, setRosterVersion] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
+  const workforceSave = useRef<(() => Promise<boolean>) | null>(null);
+  const registerWorkforceSave = useCallback(
+    (guard: (() => Promise<boolean>) | null) => {
+      workforceSave.current = guard;
+    },
+    [],
+  );
+  async function chooseTab(tab: (typeof TABS)[number]) {
+    if (
+      activeTab === "Workforce" &&
+      workforceSave.current &&
+      !(await workforceSave.current())
+    )
+      return;
+    setActiveTab(tab);
+  }
   async function signOut() {
+    if (workforceSave.current && !(await workforceSave.current())) {
+      setActiveTab("Workforce");
+      return;
+    }
     let token: string | undefined;
     try {
       token = getToken();
@@ -64,7 +84,7 @@ export default function DashboardPage() {
             <button
               key={tab}
               aria-current={activeTab === tab ? "page" : undefined}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => void chooseTab(tab)}
             >
               <svg
                 aria-hidden="true"
@@ -126,6 +146,7 @@ export default function DashboardPage() {
             accountKey={profile?.username}
             onManageTeam={() => setActiveTab("Staff")}
             rosterVersion={rosterVersion}
+            onSaveGuard={registerWorkforceSave}
           />
         </div>
         {activeTab !== "Schedule" && activeTab !== "Workforce" && (

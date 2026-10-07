@@ -113,3 +113,51 @@ def test_rio_team_changes_sync_private_workforce_without_changing_saved_days(cli
     assert any(m['key'] == f'md-{added["id"]}' for m in updated['rosters'][str(rio)])
     assert updated['rosters'][str(driscoll)] == config['rosters'][str(driscoll)]
     assert db_session.query(models.Schedule).count() == 0
+
+
+def test_home_crnas_and_post_call(client, db_session):
+    h, sites, md, crna = setup(client, db_session)
+    rio, driscoll = [s.id for s in sites]
+    config = client.get(ROOT+'settings', headers=h).json()
+    config['site_crnas'] = {str(driscoll): [{'key':'dris-crna','name':'Pediatric nurse','active':True}]}
+    assert client.put(ROOT+'settings', headers=h, json={'expected_revision':1, **{k:config[k] for k in ['rosters','crnas','site_crnas']}}).status_code == 200
+    assert client.put(ROOT+'settings', headers=h, json={'expected_revision':2,'rosters':config['rosters'],'crnas':config['crnas']}).json()['site_crnas'] == config['site_crnas']
+    assert client.put(ROOT+'settings', headers=h, json={'expected_revision':3,'rosters':config['rosters'],'crnas':config['crnas'],'site_crnas':{str(driscoll):config['crnas']}}).status_code == 422
+    payload={'entries':[entry('md',f'md-{md.id}',rio),entry('md',f'md-{md.id}',rio,status='post_call'),entry('crna','dris-crna',driscoll,home_site_id=driscoll)]}
+    r=client.put(ROOT+'day/2026-10-01',headers=h,json={'expected_revision':0,'payload':payload})
+    assert r.status_code == 200, r.text
+    assert not any('more than once' in w or 'Rio Grande: 2/1 MD' in w for w in r.json()['warnings'])
+    assert r.json()['payload']['entries'][1]['status']=='post_call'
+    assert client.put(ROOT+'day/2026-10-02',headers=h,json={'expected_revision':0,'payload':{'entries':[entry('crna',f'crna-{crna.id}',rio,status='post_call')]}}).status_code==422
+
+
+def test_issued_privacy_immutability_and_isolation(client, db_session):
+    import json
+    h,sites,md,crna=setup(client,db_session)
+    rio,driscoll=[s.id for s in sites]
+    payload={'entries':[entry('md',f'md-{md.id}',rio,note='Private timing'),entry('md','driscoll-doctor',driscoll),entry('md',None,None,status='off',guest=True,name='Secret off name'),entry('crna',f'crna-{crna.id}',driscoll,home_site_id=rio,note='11am'),entry('crna',None,driscoll,home_site_id=driscoll,guest=True,name='Regular Driscoll nurse')],'note':'Private office comment','sites':{str(rio):{'note':'Private site note'}}}
+    assert client.put(ROOT+'day/2026-10-01',headers=h,json={'expected_revision':0,'payload':payload}).status_code==200
+    path=ROOT+'issues/2026/10'
+    hospital=client.put(path,headers=h,json={'expected_revision':1,'section':str(rio)}).json()
+    for secret in ['Secret off name','Private timing','Private office comment','Private site note','Pediatric doctor','Regular Driscoll nurse']:
+        assert secret not in json.dumps(hospital)
+    assert len(hospital['snapshot']['sites'])==1 and hospital['snapshot']['sites'][0]['id']==rio
+    assert hospital['snapshot']['month']['days'][0]['payload']['entries'][0]['home_site_id'] is None
+    provider=client.put(path,headers=h,json={'expected_revision':1,'section':str(rio),'audience':'provider','include_notes':True}).json()
+    assert 'Private timing' in json.dumps(provider) and 'Secret off name' not in json.dumps(provider) and 'Private office comment' not in json.dumps(provider)
+    office=client.put(path,headers=h,json={'expected_revision':1,'section':str(rio),'audience':'office'}).json()
+    assert 'Secret off name' in json.dumps(office) and 'Private office comment' in json.dumps(office)
+    relief=client.put(path,headers=h,json={'expected_revision':1,'section':'relief','audience':'provider'}).json()
+    assert 'Nurse' in json.dumps(relief) and 'Regular Driscoll nurse' not in json.dumps(relief) and 'Secret off name' not in json.dumps(relief)
+    assert client.put(path,headers=h,json={'expected_revision':1,'section':'relief','audience':'hospital'}).status_code==422
+    assert client.put(ROOT+'day/2026-10-01',headers=h,json={'expected_revision':1,'payload':{}}).status_code==200
+    rows=client.get(ROOT+'issues?year=2026&month=10',headers=h).json()
+    assert next(r for r in rows if r['id']==hospital['id'])==hospital
+    assert client.put(path,headers=h,json={'expected_revision':1,'section':str(rio)}).status_code==409
+    next_issue=client.put(path,headers=h,json={'expected_revision':2,'section':str(rio)}).json()
+    assert next_issue['revision']==2 and next_issue['snapshot']['month']['days'][0]['payload']['entries']==[]
+    other=get_auth_headers(client,'other','secret')
+    assert client.get(ROOT+'issues?year=2026&month=10',headers=other).json()==[]
+    viewer=get_auth_headers(client,'viewer','secret')
+    assert client.get(ROOT+'issues?year=2026&month=10',headers=viewer).status_code==403
+    assert client.put(path,headers=viewer,json={'expected_revision':0,'section':str(rio)}).status_code==403
