@@ -7,7 +7,7 @@ const { createPortal } = require("react-dom") as {
 import type { ScheduleEntry } from "../lib/types";
 import { getToken } from "../lib/auth";
 import { scheduleWorkbook } from "../lib/scheduleWorkbook";
-import { isDriscoll, rioCallContacts } from "../lib/printBranding";
+import { isDriscoll, postedMdName, rioCallContacts } from "../lib/printBranding";
 
 type Props = {
   offForDate?: (date: string) => string[];
@@ -53,8 +53,8 @@ export default function ScheduleExport({
         date,
         day: i + 1,
         off: audience === "office" ? offForDate(date) : [],
-        first: row?.callFirstName || "Unassigned",
-        second: row?.callSecondName || "Unassigned",
+        first: row?.callFirstName ? (driscoll ? postedMdName(row.callFirstName) : row.callFirstName) : "Unassigned",
+        second: row?.callSecondName ? (driscoll ? postedMdName(row.callSecondName) : row.callSecondName) : "Unassigned",
       };
     },
   );
@@ -178,7 +178,7 @@ export default function ScheduleExport({
                     <p>{facility}</p>
                     <h1>{label}</h1>
                     <h2>
-                      {template
+                      {template || driscoll
                         ? "Anesthesia On-Call Schedule"
                         : "First & second call schedule"}
                     </h2>

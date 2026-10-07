@@ -912,8 +912,11 @@ def save_manual_call_day(data: schemas.ManualCallDay, db: Session = Depends(get_
 
 def _manual_month_rows(data, db, owner_id):
     facility = db.get(models.Facility, data.facility_id)
-    if not facility or facility.site_name != "Rio Grande Regional Hospital":
-        raise HTTPException(400, "Select the Rio Grande call schedule.")
+    if not facility or (facility.site_name != "Rio Grande Regional Hospital" and "driscoll" not in facility.site_name.lower()):
+        raise HTTPException(400, "Select the Rio Grande or Driscoll call calendar.")
+    if "driscoll" in facility.site_name.lower():
+        from app.api.routes.workforce import lock_owner
+        lock_owner(db, owner_id)
     start, end = _month_bounds(data.year, data.month)
     day = start
     while day <= end:
@@ -945,7 +948,8 @@ def start_blank_month(data: schemas.ManualMonthRequest, db: Session = Depends(ge
         db.add(models.ScheduleMonthBackup(owner_id=_user.id, facility_id=data.facility_id, year=data.year, month=data.month, entries=_month_snapshot(rows)))
         for row in rows:
             row.md_ids = []
-            row.call_assignments = {}
+            calls = row.call_assignments or {}
+            row.call_assignments = ({"off_keys": calls.get("off_keys", []), "off_names": calls.get("off_names", []), "revision": calls["revision"] + 1} if "revision" in calls else {})
     db.commit()
     return {"backup_available": bool(rows)}
 
@@ -966,7 +970,9 @@ def restore_manual_month(data: schemas.ManualMonthRequest, db: Session = Depends
             db.add(row)
         entry = previous.get(day, {})
         row.md_ids = entry.get("md_ids", [])
-        row.call_assignments = entry.get("call_assignments", {})
+        calls = row.call_assignments or {}
+        restored = entry.get("call_assignments", {})
+        row.call_assignments = {**restored, "revision": calls.get("revision", 0) + 1} if "revision" in calls or "revision" in restored else restored
     # Swap versions, so restoring never discards the work done since starting blank.
     backup.entries = current
     db.commit()

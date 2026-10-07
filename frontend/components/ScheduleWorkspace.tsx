@@ -18,11 +18,10 @@ export default function ScheduleWorkspace({ accountKey, onOpenWorkforce }: { acc
       <span className="eyebrow">Call calendar</span>
       <div role="group" aria-label="Choose call calendar">
         <button aria-pressed={calendar === "rio"} disabled={locked && calendar !== "rio"} onClick={() => setCalendar("rio")}>Rio Grande</button>
-        <button aria-pressed={calendar === "driscoll"} disabled={locked && calendar !== "driscoll"} onClick={() => setCalendar("driscoll")}>Driscoll Pediatrics <span>Blank template</span></button>
+        <button aria-pressed={calendar === "driscoll"} disabled={locked && calendar !== "driscoll"} onClick={() => setCalendar("driscoll")}>Driscoll Pediatrics</button>
       </div>
       {locked && <small>Finish loading or save your day before switching calendars.</small>}
     </div>
-    <div hidden={calendar !== "rio"}><ScheduleBoard accountKey={accountKey} onNavigationLockChange={setLocked}/></div>
-    <div hidden={calendar !== "driscoll"}><DriscollCalendar facility={driscoll} onOpenWorkforce={onOpenWorkforce}/></div>
+    {calendar === "rio" ? <ScheduleBoard accountKey={accountKey} onNavigationLockChange={setLocked}/> : <DriscollCalendar facility={driscoll} accountKey={accountKey} onNavigationLockChange={setLocked} onOpenWorkforce={onOpenWorkforce}/>}
   </>;
 }
