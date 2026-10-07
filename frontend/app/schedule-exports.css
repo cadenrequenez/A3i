@@ -1,11 +1,569 @@
-.schedule-export-overlay{background:#e8edf4;color:#15283f;font-family:A3iWorkspace,'Segoe UI',sans-serif;padding:28px;z-index:1000}
-.schedule-export-actions{max-width:1180px;color:#52637a;gap:12px}.schedule-export-actions .primary-button{background:#0c254b;color:white;min-height:44px}.schedule-export-actions .secondary-button{min-height:44px;background:white}.schedule-export-actions p{font-size:12px}
-.schedule-export-sheet{max-width:1180px;min-width:940px;padding:26px;background:white;box-shadow:0 12px 50px #0a1a3220;border-radius:10px;line-height:1.45;font-variant-ligatures:none}
-.schedule-export-sheet header{background:#0a1a32;color:white;border-radius:7px;padding:22px;align-items:center;margin:0;gap:18px}.export-heading{display:flex;align-items:center;gap:18px;min-width:0}.export-logo{position:relative;display:block;overflow:hidden;width:76px;height:54px;flex-shrink:0}.export-logo img{position:absolute;max-width:none;width:180px;height:101px;left:-53px;top:-21px;mix-blend-mode:screen}.schedule-export-sheet header p{color:#c4d1e2;font-size:11px}.schedule-export-sheet h1{font-size:29px;letter-spacing:-.04em;font-weight:600;margin:4px 0}.schedule-export-sheet h2{font-size:12px;color:#c4d1e2}.export-meta{text-align:right;flex-shrink:0;max-width:280px}.schedule-export-sheet header strong{font-size:10px;font-weight:500;display:block;border:1px solid #6d819e;border-radius:4px;padding:5px 8px;margin-bottom:7px}.export-meta p{margin-top:4px}
-.export-legend{display:flex;flex-wrap:wrap;gap:20px;font-size:10px;color:#52637a;padding:13px 2px}.export-first-key{color:#285aa5}.export-off-key{color:#80572a}
-.schedule-export-sheet table{border:1px solid #d8e1ed}.schedule-export-sheet th{background:#eaf1fc;color:#233d60;border:1px solid #d8e1ed;text-transform:uppercase;letter-spacing:.05em;font-weight:600;font-size:10px;padding:8px 5px}.schedule-export-sheet td{border:1px solid #d8e1ed;padding:8px 9px;height:104px;vertical-align:top}.schedule-export-sheet td.export-weekend{background:#f5f8fc}.schedule-export-sheet td.empty{background:#edf1f6}.schedule-export-sheet .export-date{display:block;font-size:13px;font-weight:600;margin-bottom:8px}.schedule-export-sheet td p{display:flex;gap:6px;margin:5px 0;font-size:10px;line-height:1.4}.schedule-export-sheet small{min-width:19px;flex-shrink:0;font-size:9px;font-weight:600}.export-call span,.export-off span{min-width:0;overflow-wrap:anywhere}.schedule-export-sheet .export-first{color:#285aa5}.schedule-export-sheet .export-unassigned{color:#8793a4}.export-off{background:#faf4e9;color:#80572a;border-radius:3px;padding:2px 5px;margin-top:7px}.schedule-export-sheet td .export-off p{font-size:9px;margin:3px 0}.schedule-export-sheet footer{display:flex;justify-content:space-between;gap:20px;font-size:9px;color:#66768a;margin-top:14px}.schedule-export-sheet footer strong{font-weight:500;white-space:nowrap}.export-template-line{color:#8a97a8}.export-template-line span{border-bottom:1px solid #c6d0de;flex:1;min-height:14px}
-.facility-calendar-picker{padding:20px 26px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.facility-calendar-picker>div{display:flex;gap:4px;background:#e8edf4;padding:4px;border-radius:8px}.facility-calendar-picker button{min-height:44px;padding:8px 14px;color:#66768a;font-size:12px;border-radius:6px}.facility-calendar-picker button[aria-pressed=true]{background:white;color:#15283f;box-shadow:0 1px 4px #0d203414}.facility-calendar-picker button span{font-size:9px;margin-left:7px;color:#66768a}.facility-calendar-picker small{font-size:11px;color:#66768a}.template-status{display:flex;gap:12px;align-items:center}.template-status>span{font-size:11px;padding:5px 9px;border-radius:5px;background:#eaf1fc;color:#285aa5}.template-status small{font-size:11px;color:#66768a}.template-call-lines{display:grid;gap:9px;font-size:10px;color:#8793a4;align-self:stretch}.template-call-lines>span{display:flex;justify-content:space-between;gap:5px}.template-call-lines b{font-weight:400}.template-description{font-size:12px;line-height:1.8;color:#66768a;margin:14px 0 20px}.template-staffing{padding:14px;background:#eaf1fc;border-radius:7px;display:grid;gap:5px}.template-staffing span{font-size:11px;color:#52637a}.template-staffing strong{font-size:19px;font-weight:500;color:#15283f}.template-staffing small{font-size:10px;color:#66768a}.template-next{border-top:1px solid #dee5ee;margin-top:22px;padding-top:18px}.template-next h3{font-size:12px;font-weight:600}.template-next p{font-size:11px;color:#66768a;line-height:1.8;margin-top:8px}
-@media(max-width:700px){.facility-calendar-picker{padding:16px 16px 0;gap:8px}.facility-calendar-picker>span{width:100%}.facility-calendar-picker>div{width:100%}.facility-calendar-picker button{flex:1;padding:8px;font-size:11px}.facility-calendar-picker button span{display:block;margin:0;font-size:9px}.schedule-export-overlay{padding:16px}.schedule-export-actions p{width:100%}.driscoll-workspace .template-call-lines{font-size:9px}}
-@media print{html,body{background:white!important;min-height:0!important;height:auto!important}@page{size:letter landscape;margin:8mm}.schedule-export-overlay{padding:0;overflow:visible;background:white}.schedule-export-sheet{box-shadow:none;border-radius:0;padding:0;min-width:0;max-width:none;width:100%;print-color-adjust:exact;-webkit-print-color-adjust:exact}.schedule-export-sheet header{border-radius:0;padding:12px 16px;break-inside:avoid;margin:0}.schedule-export-sheet h1{font-size:24px}.export-logo{width:62px;height:45px}.export-logo img{width:150px;height:84px;left:-44px;top:-18px}.export-heading{gap:12px}.schedule-export-sheet header p{font-size:9px}.schedule-export-sheet header strong{font-size:9px}.schedule-export-sheet h2{font-size:10px}.export-legend{font-size:9px;padding:7px 0}.schedule-export-sheet th{font-size:9px;padding:5px}.schedule-export-sheet td{height:21mm;padding:5px 7px}.schedule-export-sheet.weeks-6 td{height:17mm}.schedule-export-sheet .export-date{font-size:11px;margin-bottom:4px}.schedule-export-sheet td p{font-size:9px;margin:3px 0}.schedule-export-sheet small{font-size:8px;min-width:17px}.schedule-export-sheet td .export-off p{font-size:8px}.export-off{margin-top:4px;padding:1px 4px}.schedule-export-sheet footer{font-size:8px;margin-top:8px}.schedule-export-sheet tr{break-inside:avoid}}
+.schedule-export-overlay {
+  background: #e8edf4;
+  color: #15283f;
+  font-family: A3iWorkspace, "Segoe UI", sans-serif;
+  padding: 28px;
+  z-index: 1000;
+}
+.schedule-export-actions {
+  max-width: 1180px;
+  color: #52637a;
+  gap: 12px;
+}
+.schedule-export-actions .primary-button {
+  background: #0c254b;
+  color: white;
+  min-height: 44px;
+}
+.schedule-export-actions .secondary-button {
+  min-height: 44px;
+  background: white;
+}
+.schedule-export-actions p {
+  font-size: 12px;
+}
+.schedule-export-sheet {
+  max-width: 1180px;
+  min-width: 940px;
+  padding: 26px;
+  background: white;
+  box-shadow: 0 12px 50px #0a1a3220;
+  border-radius: 10px;
+  line-height: 1.45;
+  font-variant-ligatures: none;
+}
+.schedule-export-sheet header {
+  background: #0a1a32;
+  color: white;
+  border-radius: 7px;
+  padding: 22px;
+  align-items: center;
+  margin: 0;
+  gap: 18px;
+}
+.export-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.export-logo {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 76px;
+  height: 54px;
+  flex-shrink: 0;
+}
+.export-logo img {
+  position: absolute;
+  max-width: none;
+  width: 180px;
+  height: 101px;
+  left: -53px;
+  top: -21px;
+  mix-blend-mode: screen;
+}
+.schedule-export-sheet header p {
+  color: #c4d1e2;
+  font-size: 11px;
+}
+.schedule-export-sheet h1 {
+  font-size: 29px;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+  margin: 4px 0;
+}
+.schedule-export-sheet h2 {
+  font-size: 12px;
+  color: #c4d1e2;
+}
+.export-meta {
+  text-align: right;
+  flex-shrink: 0;
+  max-width: 280px;
+}
+.schedule-export-sheet header strong {
+  font-size: 10px;
+  font-weight: 500;
+  display: block;
+  border: 1px solid #6d819e;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 7px;
+}
+.export-meta p {
+  margin-top: 4px;
+}
+.export-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 10px;
+  color: #52637a;
+  padding: 13px 2px;
+}
+.export-first-key {
+  color: #285aa5;
+}
+.export-off-key {
+  color: #80572a;
+}
+.schedule-export-sheet table {
+  border: 1px solid #d8e1ed;
+}
+.schedule-export-sheet th {
+  background: #eaf1fc;
+  color: #233d60;
+  border: 1px solid #d8e1ed;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  font-size: 10px;
+  padding: 8px 5px;
+}
+.schedule-export-sheet td {
+  border: 1px solid #d8e1ed;
+  padding: 8px 9px;
+  height: 104px;
+  vertical-align: top;
+}
+.schedule-export-sheet td.export-weekend {
+  background: #f5f8fc;
+}
+.schedule-export-sheet td.empty {
+  background: #edf1f6;
+}
+.schedule-export-sheet .export-date {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.schedule-export-sheet td p {
+  display: flex;
+  gap: 6px;
+  margin: 5px 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.schedule-export-sheet small {
+  min-width: 19px;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+}
+.export-call span,
+.export-off span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.schedule-export-sheet .export-first {
+  color: #285aa5;
+}
+.schedule-export-sheet .export-unassigned {
+  color: #8793a4;
+}
+.export-off {
+  background: #faf4e9;
+  color: #80572a;
+  border-radius: 3px;
+  padding: 2px 5px;
+  margin-top: 7px;
+}
+.schedule-export-sheet td .export-off p {
+  font-size: 9px;
+  margin: 3px 0;
+}
+.schedule-export-sheet footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 9px;
+  color: #66768a;
+  margin-top: 14px;
+}
+.schedule-export-sheet footer strong {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.export-template-line {
+  color: #8a97a8;
+}
+.export-template-line span {
+  border-bottom: 1px solid #c6d0de;
+  flex: 1;
+  min-height: 14px;
+}
+.facility-calendar-picker {
+  padding: 20px 26px 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.facility-calendar-picker > div {
+  display: flex;
+  gap: 4px;
+  background: #e8edf4;
+  padding: 4px;
+  border-radius: 8px;
+}
+.facility-calendar-picker button {
+  min-height: 44px;
+  padding: 8px 14px;
+  color: #66768a;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.facility-calendar-picker button[aria-pressed="true"] {
+  background: white;
+  color: #15283f;
+  box-shadow: 0 1px 4px #0d203414;
+}
+.facility-calendar-picker button span {
+  font-size: 9px;
+  margin-left: 7px;
+  color: #66768a;
+}
+.facility-calendar-picker small {
+  font-size: 11px;
+  color: #66768a;
+}
+.template-status {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.template-status > span {
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #eaf1fc;
+  color: #285aa5;
+}
+.template-status small {
+  font-size: 11px;
+  color: #66768a;
+}
+.template-call-lines {
+  display: grid;
+  gap: 9px;
+  font-size: 10px;
+  color: #8793a4;
+  align-self: stretch;
+}
+.template-call-lines > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+.template-call-lines b {
+  font-weight: 400;
+}
+.template-description {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #66768a;
+  margin: 14px 0 20px;
+}
+.template-staffing {
+  padding: 14px;
+  background: #eaf1fc;
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+}
+.template-staffing span {
+  font-size: 11px;
+  color: #52637a;
+}
+.template-staffing strong {
+  font-size: 19px;
+  font-weight: 500;
+  color: #15283f;
+}
+.template-staffing small {
+  font-size: 10px;
+  color: #66768a;
+}
+.template-next {
+  border-top: 1px solid #dee5ee;
+  margin-top: 22px;
+  padding-top: 18px;
+}
+.template-next h3 {
+  font-size: 12px;
+  font-weight: 600;
+}
+.template-next p {
+  font-size: 11px;
+  color: #66768a;
+  line-height: 1.8;
+  margin-top: 8px;
+}
+@media (max-width: 700px) {
+  .facility-calendar-picker {
+    padding: 16px 16px 0;
+    gap: 8px;
+  }
+  .facility-calendar-picker > span {
+    width: 100%;
+  }
+  .facility-calendar-picker > div {
+    width: 100%;
+  }
+  .facility-calendar-picker button {
+    flex: 1;
+    padding: 8px;
+    font-size: 11px;
+  }
+  .facility-calendar-picker button span {
+    display: block;
+    margin: 0;
+    font-size: 9px;
+  }
+  .schedule-export-overlay {
+    padding: 16px;
+  }
+  .schedule-export-actions p {
+    width: 100%;
+  }
+  .driscoll-workspace .template-call-lines {
+    font-size: 9px;
+  }
+}
+@media print {
+  html,
+  body {
+    background: white !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  @page {
+    size: letter landscape;
+    margin: 8mm;
+  }
+  .schedule-export-overlay {
+    padding: 0;
+    overflow: visible;
+    background: white;
+  }
+  .schedule-export-sheet {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .schedule-export-sheet header {
+    border-radius: 0;
+    padding: 12px 16px;
+    break-inside: avoid;
+    margin: 0;
+  }
+  .schedule-export-sheet h1 {
+    font-size: 24px;
+  }
+  .export-logo {
+    width: 62px;
+    height: 45px;
+  }
+  .export-logo img {
+    width: 150px;
+    height: 84px;
+    left: -44px;
+    top: -18px;
+  }
+  .export-heading {
+    gap: 12px;
+  }
+  .schedule-export-sheet header p {
+    font-size: 9px;
+  }
+  .schedule-export-sheet header strong {
+    font-size: 9px;
+  }
+  .schedule-export-sheet h2 {
+    font-size: 10px;
+  }
+  .export-legend {
+    font-size: 9px;
+    padding: 7px 0;
+  }
+  .schedule-export-sheet th {
+    font-size: 9px;
+    padding: 5px;
+  }
+  .schedule-export-sheet td {
+    height: 21mm;
+    padding: 5px 7px;
+  }
+  .schedule-export-sheet.weeks-6 td {
+    height: 17mm;
+  }
+  .schedule-export-sheet .export-date {
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .schedule-export-sheet td p {
+    font-size: 9px;
+    margin: 3px 0;
+  }
+  .schedule-export-sheet small {
+    font-size: 8px;
+    min-width: 17px;
+  }
+  .schedule-export-sheet td .export-off p {
+    font-size: 8px;
+  }
+  .export-off {
+    margin-top: 4px;
+    padding: 1px 4px;
+  }
+  .schedule-export-sheet footer {
+    font-size: 8px;
+    margin-top: 8px;
+  }
+  .schedule-export-sheet tr {
+    break-inside: avoid;
+  }
+}
 
-@media(max-width:700px){.template-coverage-word{display:none}.template-call-lines>span{justify-content:flex-start}.template-call-lines b{display:none}}
+@media (max-width: 700px) {
+  .template-coverage-word {
+    display: none;
+  }
+  .template-call-lines > span {
+    justify-content: flex-start;
+  }
+  .template-call-lines b {
+    display: none;
+  }
+}
+
+/* Hospital stationery from the supplied Driscoll calendars. */
+.hospital-print-logo {
+  display: block;
+  width: 52px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.driscoll-print header {
+  background: white;
+  color: #15283f;
+  border-radius: 0;
+  border-bottom: 3px solid #f7cb41;
+  padding: 10px 0 14px;
+  gap: 20px;
+}
+.driscoll-print header p,
+.driscoll-print h2 {
+  color: #233d60;
+}
+.driscoll-print header strong,
+.driscoll-print header span {
+  border-color: #d8e1ed;
+  color: #52637a;
+}
+.driscoll-print header h1 {
+  letter-spacing: -0.03em;
+}
+.wf-calendar-sheet.driscoll-print header > div {
+  flex: 1;
+  text-align: center;
+}
+.driscoll-print th {
+  background: #dff3fc !important;
+  color: #173a54 !important;
+}
+.driscoll-print .export-first,
+.driscoll-print .export-first-key {
+  color: #173a54;
+}
+.driscoll-full-month .wf-export-date {
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+.driscoll-full-month .wf-export-pair p {
+  font-size: 11px;
+  line-height: 1.25;
+  margin: 2px 0;
+}
+.driscoll-full-month .wf-export-pair .wf-post-call {
+  margin-top: 8px;
+  color: #233d60;
+}
+.driscoll-full-month .wf-export-calendar td {
+  height: 110px;
+  padding: 6px;
+}
+.driscoll-print .export-template-line small {
+  min-width: 33px;
+}
+
+.wf-export-pair.is-single {
+  grid-template-columns: 1fr;
+}
+.wf-export-pair.is-single > div {
+  border: 0;
+  padding: 0;
+}
+@media print {
+  .driscoll-print header {
+    padding: 3px 0 8px;
+    gap: 12px;
+    border-bottom-width: 2px;
+  }
+  .hospital-print-logo {
+    width: 42px;
+    height: 39px;
+  }
+  .driscoll-print header strong {
+    font-size: 8px;
+  }
+  .driscoll-full-month .wf-export-calendar td {
+    height: 25mm;
+    padding: 4px;
+  }
+  .driscoll-full-month .wf-export-calendar thead th {
+    padding: 4px;
+    font-size: 8px;
+  }
+  .driscoll-full-month .wf-export-date {
+    font-size: 11px;
+    margin-bottom: 3px;
+  }
+  .driscoll-full-month .wf-export-pair p {
+    font-size: 11px;
+    line-height: 1.25;
+    margin: 1px 0;
+  }
+  .driscoll-full-month .wf-export-pair > div > b {
+    display: none;
+  }
+  .driscoll-full-month .wf-export-pair > div:first-child p {
+    font-weight: 600;
+  }
+  .driscoll-full-month .wf-export-pair .wf-post-call {
+    margin-top: 6px;
+  }
+  .driscoll-full-month footer {
+    margin-top: 6px;
+    padding-top: 5px;
+  }
+  .driscoll-print .export-template-line small {
+    min-width: 29px;
+  }
+  .wf-calendar-sheet.driscoll-print:not(.driscoll-full-month)
+    .wf-export-pair
+    p {
+    font-size: 10px;
+    line-height: 1.3;
+    margin: 0;
+  }
+}

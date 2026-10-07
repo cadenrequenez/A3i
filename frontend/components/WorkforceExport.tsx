@@ -19,6 +19,7 @@ import {
   workforceSiteName,
   workforceWorkbook,
 } from "../lib/workforceWorkbook";
+import { isDriscoll, postedMdName } from "../lib/printBranding";
 export default function WorkforceExport({
   month,
   sites,
@@ -123,19 +124,65 @@ export default function WorkforceExport({
   const weekendStaffed = safe.days.some(
     (d) =>
       [0, 6].includes(new Date(d.date + "T12:00:00").getDay()) &&
-      d.payload.entries.some((e) => e.status !== "off"),
+      (d.payload.entries.some(
+        (e) => e.status !== "off" || audience === "office",
+      ) ||
+        !!d.payload.note ||
+        Object.values(d.payload.sites).some((s) => !!s.note)),
   );
-  const perPage = relief
-    ? weekendStaffed
-      ? 1
-      : 2
-    : workforceSiteName(site) === "ASC"
-      ? weekendStaffed
-        ? 3
-        : weeks.length
-      : weekendStaffed
-        ? 2
-        : 3;
+  const driscoll = !relief && !!site && isDriscoll(site.site_name);
+  const mdName = (name: string) => (driscoll ? postedMdName(name) : name);
+  const maxColumnLines = Math.max(
+    0,
+    ...safe.days.flatMap((d) =>
+      ["md", "crna"].map((kind) =>
+        d.payload.entries
+          .filter((e) => e.kind === kind && e.status !== "off")
+          .reduce(
+            (n, e) =>
+              n +
+              Math.ceil((kind === "md" ? mdName(e.name) : e.name).length / 16),
+            0,
+          ),
+      ),
+    ),
+  );
+  const compactDriscoll =
+    driscoll &&
+    !weekendStaffed &&
+    maxColumnLines <= (weeks.length === 6 ? 4 : 6) &&
+    safe.days.every((d) => {
+      const p = d.payload;
+      if (
+        p.note ||
+        p.sites[site.id]?.note ||
+        p.entries.some((e) => e.note || e.status === "off")
+      )
+        return false;
+      return true;
+    });
+  const updated = safe.days
+    .map((d) => d.updated_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const perPage = compactDriscoll
+    ? weeks.length
+    : driscoll
+      ? maxColumnLines > 12
+        ? 1
+        : 2
+      : relief
+        ? weekendStaffed
+          ? 1
+          : 2
+        : workforceSiteName(site) === "ASC"
+          ? weekendStaffed
+            ? 3
+            : weeks.length
+          : weekendStaffed
+            ? 2
+            : 3;
   const pages = Array.from(
     { length: Math.ceil(weeks.length / perPage) },
     (_, i) => weeks.slice(i * perPage, i * perPage + perPage),
@@ -316,19 +363,45 @@ export default function WorkforceExport({
       </div>
       {pages.map((page, pi) => (
         <section
-          className={`wf-print-sheet wf-calendar-sheet ${relief ? "is-relief" : ""}`}
+          className={`wf-print-sheet wf-calendar-sheet ${relief ? "is-relief" : ""} ${driscoll ? "driscoll-print" : ""} ${compactDriscoll ? "driscoll-full-month" : ""}`}
           key={pi}
         >
           <header>
+            {driscoll && (
+              <img
+                className="hospital-print-logo"
+                src="/logos/driscoll-sun.png"
+                alt="Driscoll"
+              />
+            )}
             <div>
-              <p>A3i · {title}</p>
+              <p>
+                {driscoll
+                  ? "Driscoll · Anesthesia Workforce Schedule"
+                  : `A3i · ${title}`}
+              </p>
               <h1>{label}</h1>
             </div>
             <span>
               {revision}
               <br />
               {audienceLabel}
+              {driscoll && (
+                <>
+                  <br />
+                  {updated
+                    ? `Updated ${new Date(updated).toLocaleDateString("en-US")}`
+                    : "No saved assignments"}
+                </>
+              )}
             </span>
+            {driscoll && (
+              <img
+                className="hospital-print-logo hospital-print-logo-right"
+                src="/logos/driscoll-sun.png"
+                alt=""
+              />
+            )}
           </header>
           <p className="wf-print-meta">
             {relief
@@ -402,21 +475,26 @@ export default function WorkforceExport({
                               </ol>
                             ) : p?.sites[site.id]?.closed ? (
                               <p>Closed</p>
-                            ) : (
-                              <div className="wf-export-pair">
-                                <div>
+                            ) : mds.length || crnas.length || post.length ? (
+                              <div
+                                className={`wf-export-pair ${(!mds.length && !post.length) || !crnas.length ? "is-single" : ""}`}
+                              >
+                                <div hidden={!mds.length && !post.length}>
                                   <b>MD</b>
                                   {mds.map((e, i) => (
                                     <p key={i}>
-                                      {e.name}
                                       {post.some(
                                         (v) =>
                                           (v.key && v.key === e.key) ||
                                           v.name === e.name,
                                       )
-                                        ? " *"
+                                        ? "*"
                                         : ""}
+                                      {mdName(e.name)}
                                       {e.note && <small>{e.note}</small>}
+                                      {e.status === "admin" && (
+                                        <small>Admin</small>
+                                      )}
                                     </p>
                                   ))}
                                   {post
@@ -426,21 +504,24 @@ export default function WorkforceExport({
                                     )
                                     .map((e, i) => (
                                       <p className="wf-post-call" key={`p${i}`}>
-                                        *{e.name}
+                                        *{mdName(e.name)}
                                       </p>
                                     ))}
                                 </div>
-                                <div>
+                                <div hidden={!crnas.length}>
                                   <b>CRNA</b>
                                   {crnas.map((e, i) => (
                                     <p key={i}>
                                       {e.name}
                                       {e.note && <small>{e.note}</small>}
+                                      {e.status === "admin" && (
+                                        <small>Admin</small>
+                                      )}
                                     </p>
                                   ))}
                                 </div>
                               </div>
-                            )}
+                            ) : null}
                             {audience === "office" && off.length > 0 && (
                               <p className="wf-print-off">
                                 <b>Off</b> {off.map((e) => e.name).join(", ")}

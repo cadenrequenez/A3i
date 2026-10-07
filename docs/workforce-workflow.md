@@ -17,3 +17,11 @@ Save issued copy stores an immutable, owner-scoped snapshot of that exact workfo
 ## Reference formats and pending source choices
 
 The supplied October OR workforce, internal MD call, ASC and CRNA relief documents informed these formats. Original files and existing saved assignments are preserved. Revision #8 and the later Mail copies differ on 15 weekdays; actual October assignment import requires the owner to choose the authoritative version. Do not infer the meaning of “11am” or the direction of relief priority without confirmation. No OB sample or final Driscoll call rules were supplied, so do not invent either. Separate site workforce templates are usable without assignments.
+
+### Hospital stationery (October 2026 references)
+
+Driscoll call and workforce PDFs use the sun logo extracted from the office-supplied Driscoll October PDFs, with a blue calendar heading and a yellow header rule. The workforce copy keeps MDs and CRNAs side by side, uses the recognized Driscoll MD surnames (D. / E. Requenez stay distinct), and preserves * for post-call. Blank dates show no staffing labels. A typical weekday-only month prints on one page; long names, extra staffing, weekends, or office notes use additional pages rather than clipping names. The update date comes from saved data, not the reference PDF's old date.
+
+Rio call PDF and Excel copies include the verified office phone lines: 1st Call (956) 468-5019; 2nd Call (956) 468-5018. These numbers are specific to Rio Hospital and are never added to Driscoll or ASC. Public call spreadsheets exclude the Off column entirely; office copies retain it.
+
+Driscoll's overnight call screen remains a blank planning template with two call entries per day, matching the provided calendar. This print update does not import October assignments or enable overnight call editing. Separate assignment import/source confirmation and call configuration are still pending.

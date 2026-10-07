@@ -7,6 +7,7 @@ const { createPortal } = require("react-dom") as {
 import type { ScheduleEntry } from "../lib/types";
 import { getToken } from "../lib/auth";
 import { scheduleWorkbook } from "../lib/scheduleWorkbook";
+import { isDriscoll, rioCallContacts } from "../lib/printBranding";
 
 type Props = {
   offForDate?: (date: string) => string[];
@@ -30,6 +31,8 @@ export default function ScheduleExport({
 }: Props) {
   const [open, setOpen] = useState(false),
     [audience, setAudience] = useState("hospital");
+  const driscoll = isDriscoll(facility),
+    contacts = rioCallContacts(facility);
   const label = new Date(year, month - 1, 1).toLocaleDateString(undefined, {
     month: "long",
     year: "numeric",
@@ -69,6 +72,7 @@ export default function ScheduleExport({
     const bytes = scheduleWorkbook(year, month, facility, days, {
       template,
       staffing,
+      audience,
     });
     const url = URL.createObjectURL(
       new Blob([bytes as BlobPart], {
@@ -153,21 +157,29 @@ export default function ScheduleExport({
                 headers and footers.
               </p>
             </div>
-            <article className={`schedule-export-sheet weeks-${weeks.length}`}>
+            <article
+              className={`schedule-export-sheet weeks-${weeks.length} ${driscoll ? "driscoll-print" : ""}`}
+            >
               <header>
                 <div className="export-heading">
-                  <span className="export-logo">
-                    <img src="/logos/a3i-navy.png" alt="A3i" />
+                  <span
+                    className={driscoll ? "hospital-print-logo" : "export-logo"}
+                  >
+                    <img
+                      src={
+                        driscoll
+                          ? "/logos/driscoll-sun.png"
+                          : "/logos/a3i-navy.png"
+                      }
+                      alt={driscoll ? "Driscoll" : "A3i"}
+                    />
                   </span>
                   <div>
-                    <p>
-                      {facility}
-                      {template ? " · Pediatrics" : ""}
-                    </p>
+                    <p>{facility}</p>
                     <h1>{label}</h1>
                     <h2>
                       {template
-                        ? "Pediatric call calendar"
+                        ? "Anesthesia On-Call Schedule"
                         : "First & second call schedule"}
                     </h2>
                   </div>
@@ -190,14 +202,25 @@ export default function ScheduleExport({
                   <p>Exported {new Date().toLocaleDateString()}</p>
                   {staffing && <p>Daily staffing target: {staffing}</p>}
                 </div>
+                {driscoll && (
+                  <img
+                    className="hospital-print-logo hospital-print-logo-right"
+                    src="/logos/driscoll-sun.png"
+                    alt=""
+                  />
+                )}
               </header>
               <div className="export-legend">
                 {template ? (
-                  "Call positions will be configured before assigning staff."
+                  "Two call entries per day · Blank planning template"
                 ) : (
                   <>
-                    <span className="export-first-key">1st · First call</span>
-                    <span>2nd · Second call</span>
+                    <span className="export-first-key">
+                      1st · First call{contacts ? ` · ${contacts.first}` : ""}
+                    </span>
+                    <span>
+                      2nd · Second call{contacts ? ` · ${contacts.second}` : ""}
+                    </span>
                     {audience === "office" && (
                       <span className="export-off-key">
                         Off · Private office copy
@@ -238,7 +261,11 @@ export default function ScheduleExport({
                               {template ? (
                                 <>
                                   <p className="export-template-line">
-                                    <small>Call</small>
+                                    <small>Call 1</small>
+                                    <span />
+                                  </p>
+                                  <p className="export-template-line">
+                                    <small>Call 2</small>
                                     <span />
                                   </p>
                                   {audience === "office" && (
