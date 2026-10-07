@@ -136,7 +136,7 @@ export function workforceWorkbook(
   const cell = (r: string, s: string, style = 0) =>
     `<c r="${r}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${esc(s)}</t></is></c>`;
   const dataSheets = selectedSheets.map((s, i) => {
-    let rows = `<row r="1" ht="35" customHeight="1">${cell("A1", `A3i / ${label} / ${s.name}`, 1)}</row><row r="2" ht="27" customHeight="1">${cell("A2", `${month.status === "ready" ? "Ready to share" : "DRAFT · In progress"} · ${options.revision || "Saved copy"} · ${options.audience === "office" ? "Private office copy" : options.audience === "provider" ? "Provider copy" : "Hospital copy"} · * MD post-call`, 2)}</row><row r="3" ht="25" customHeight="1">${s.headers.map((h, n) => cell(`${String.fromCharCode(65 + n)}3`, h, 2)).join("")}</row>`;
+    let rows = `<row r="1" ht="35" customHeight="1">${cell("A1", `A3i / ${label} / ${s.name}`, 1)}</row><row r="2" ht="27" customHeight="1">${cell("A2", `${month.status === "ready" ? "Ready to share" : "DRAFT · In progress"} · ${options.revision || "Saved copy"} · ${options.audience === "office" ? "Private office copy · " : ""}* MD post-call`, 2)}</row><row r="3" ht="25" customHeight="1">${s.headers.map((h, n) => cell(`${String.fromCharCode(65 + n)}3`, h, 2)).join("")}</row>`;
     for (let day = 1; day <= count; day++) {
       const r = day + 3,
         values = s.values(day),

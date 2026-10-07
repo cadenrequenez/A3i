@@ -287,11 +287,11 @@ export default function WorkforceExport({
           >
             {!relief && (
               <option value="hospital">
-                Hospital copy
+                Hospital copy · No Off names
               </option>
             )}
-            <option value="provider">Provider copy</option>
-            <option value="office">Private office copy</option>
+            <option value="provider">Provider copy · No Off names</option>
+            <option value="office">Private office copy · Includes Off</option>
           </select>
         </label>
         {audience !== "office" && (
@@ -382,8 +382,7 @@ export default function WorkforceExport({
             </div>
             <span>
               {revision}
-              <br />
-              {audienceLabel}
+              {audience === "office" && <><br />{audienceLabel}</>}
               {driscoll && (
                 <>
                   <br />
@@ -543,7 +542,7 @@ export default function WorkforceExport({
             </tbody>
           </table>
           <footer>
-            {revision} · {audienceLabel} · a3isolution.com
+            {revision}{audience === "office" ? ` · ${audienceLabel}` : ""} · a3isolution.com
           </footer>
         </section>
       ))}

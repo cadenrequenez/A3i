@@ -96,9 +96,9 @@ export default function ScheduleExport({
             value={audience}
             onChange={(e) => setAudience(e.target.value)}
           >
-            <option value="hospital">Hospital copy</option>
-            <option value="provider">Provider copy</option>
-            <option value="office">Private office copy</option>
+            <option value="hospital">Hospital copy · No Off names</option>
+            <option value="provider">Provider copy · No Off names</option>
+            <option value="office">Private office copy · Includes Off</option>
           </select>
         </label>
         <button
@@ -192,13 +192,7 @@ export default function ScheduleExport({
                         ? `Draft · ${missing} unfinished ${missing === 1 ? "day" : "days"}`
                         : "All days assigned · Saved copy"}
                   </strong>
-                  <p>
-                    {audience === "office"
-                      ? "Private office copy"
-                      : audience === "hospital"
-                        ? "Hospital copy"
-                        : "Provider copy"}
-                  </p>
+                  {audience === "office" && <p>Private office copy</p>}
                   <p>Exported {new Date().toLocaleDateString()}</p>
                   {staffing && <p>Daily staffing target: {staffing}</p>}
                 </div>
