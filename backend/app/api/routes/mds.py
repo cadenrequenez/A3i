@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import crud, models, schemas
+from app.api.routes.workforce import lock_owner, sync_rio_md
 from app.core.deps import get_current_admin, get_db, get_current_user
 
 router = APIRouter(prefix="/mds", tags=["mds"])
@@ -12,7 +13,12 @@ def create_md(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    return crud.create_md(db, data)
+    lock_owner(db, _user.id)
+    md = crud.create_md(db, data, commit=False)
+    sync_rio_md(db, _user.id, md, added=True)
+    db.commit()
+    db.refresh(md)
+    return md
 
 
 @router.get("/", response_model=list[schemas.MDOut])
@@ -45,7 +51,12 @@ def update_md(
     md = db.query(models.MD).filter(models.MD.id == md_id).first()
     if not md:
         raise HTTPException(status_code=404, detail="MD not found")
-    return crud.update_md(db, md, data)
+    lock_owner(db, _user.id)
+    md = crud.update_md(db, md, data, commit=False)
+    sync_rio_md(db, _user.id, md)
+    db.commit()
+    db.refresh(md)
+    return md
 
 
 @router.delete("/{md_id}")

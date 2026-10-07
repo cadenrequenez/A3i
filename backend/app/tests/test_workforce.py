@@ -79,3 +79,37 @@ def test_duplicate_off_is_warning_and_draft_saves(client,db_session):
     p={'entries':[entry('md',f'md-{md.id}',sites[0].id),entry('md',f'md-{md.id}',None,status='off')]}
     r=client.put(ROOT+'day/2026-10-03',headers=h,json={'expected_revision':0,'payload':p})
     assert r.status_code==200 and any('more than once' in w for w in r.json()['warnings'])
+
+
+def test_rio_team_changes_sync_private_workforce_without_changing_saved_days(client, db_session):
+    h, sites, md, crna = setup(client, db_session)
+    rio, driscoll = [s.id for s in sites]
+    other = get_auth_headers(client, 'other', 'secret')
+    other_config = client.get(ROOT + 'settings', headers=other).json()
+    assert client.put(ROOT + 'settings', headers=other, json={
+        'expected_revision': 0, 'rosters': other_config['rosters'], 'crnas': other_config['crnas']
+    }).status_code == 200
+    day = ROOT + 'day/2026-10-04'
+    assert client.put(day, headers=h, json={'expected_revision': 0, 'payload': {
+        'entries': [entry('md', f'md-{md.id}', rio)]
+    }}).status_code == 200
+    r = client.put(f'/api/v1/mds/{md.id}', headers=h, json={'name': 'Updated Rio doctor', 'active': False})
+    assert r.status_code == 200, r.text
+    config = client.get(ROOT + 'settings', headers=h).json()
+    assert config['revision'] == 2
+    assert config['rosters'][str(rio)][0] == {'key': f'md-{md.id}', 'name': 'Updated Rio doctor', 'active': False}
+    assert config['rosters'][str(driscoll)] == [{'key': 'driscoll-doctor', 'name': 'Pediatric doctor', 'active': True}]
+    unchanged = client.get(ROOT + 'settings', headers=other).json()
+    assert unchanged['revision'] == 1
+    assert unchanged['rosters'][str(rio)][0]['name'] == 'Rio doctor'
+    saved = client.get(ROOT + 'month?year=2026&month=10', headers=h).json()['days'][0]
+    assert saved['revision'] == 1 and saved['payload']['entries'][0]['name'] == 'Rio doctor'
+    assert client.put(ROOT + 'settings', headers=h, json={
+        'expected_revision': 1, 'rosters': config['rosters'], 'crnas': config['crnas']
+    }).status_code == 409
+    added = client.post('/api/v1/mds/', headers=h, json={'name': 'New Rio MD', 'active': True}).json()
+    updated = client.get(ROOT + 'settings', headers=h).json()
+    assert updated['revision'] == 3
+    assert any(m['key'] == f'md-{added["id"]}' for m in updated['rosters'][str(rio)])
+    assert updated['rosters'][str(driscoll)] == config['rosters'][str(driscoll)]
+    assert db_session.query(models.Schedule).count() == 0

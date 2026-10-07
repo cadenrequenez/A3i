@@ -69,6 +69,35 @@ def settings_data(db, owner):
                 crnas=row.crnas if row else [dict(key=f"crna-{s.id}", name=s.name, active=s.active) for s in db.query(CRNA).order_by(CRNA.id)])
 
 
+def sync_rio_md(db, owner, md, *, added=False):
+    """Keep Team's Rio editor and this owner's workforce roster in one transaction."""
+    row = db.get(WorkforceSettings, owner)
+    if not row:
+        return  # Default rosters already read the current MD table.
+    key = f"md-{md.id}"
+    rosters = {site: [dict(member) for member in members] for site, members in row.rosters.items()}
+    changed = False
+    for members in rosters.values():
+        for member in members:
+            if member["key"] == key and (member["name"] != md.name or member["active"] != md.active):
+                member.update(name=md.name, active=md.active)
+                changed = True
+    if added:
+        for site in db.query(Facility).all():
+            name = site.site_name.lower()
+            if "rio" in name and "surgical" not in name:
+                members = rosters.setdefault(str(site.id), [])
+                if not any(member["key"] == key for member in members):
+                    members.append(dict(key=key, name=md.name, active=md.active))
+                    changed = True
+    if changed:
+        row.rosters = rosters
+        row.revision += 1
+        for month in db.query(WorkforceMonth).filter_by(owner_id=owner).all():
+            month.status = "draft"
+            month.revision += 1
+
+
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db), user=Depends(get_current_user)):
     return settings_data(db, user.id)

@@ -845,3 +845,223 @@ dialog.wf-modal > section {
 .wf-roster-list button {
   flex-shrink: 0;
 }
+
+/* Team is the single home for facility rosters. */
+.team-intro {
+  max-width: 760px;
+  color: #65758b;
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+.team-roster-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.team-roster-nav button {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 18px;
+  background: white;
+  border: 1px solid #dbe3ed;
+  border-radius: 12px;
+  color: #334a66;
+  font-weight: 600;
+}
+.team-roster-nav button[aria-pressed="true"] {
+  background: #122d4f;
+  color: white;
+  border-color: #122d4f;
+  box-shadow: 0 4px 12px #122d4f16;
+}
+.team-roster-nav button span {
+  font-size: 12px;
+  border-radius: 7px;
+  padding: 2px 8px;
+  background: #edf2f8;
+  color: #334a66;
+}
+.team-roster-nav button[aria-pressed="true"] span {
+  background: #ffffff21;
+  color: white;
+}
+.team-roster-nav button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.team-other-sites {
+  color: #65758b;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+.team-other-sites summary {
+  cursor: pointer;
+  width: fit-content;
+  padding: 6px 0;
+}
+.team-other-sites .team-roster-nav {
+  margin-top: 12px;
+}
+.team-roster-panel {
+  border-radius: 18px;
+  padding: 26px;
+}
+.team-roster-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+.team-roster-heading h2 {
+  color: #142f50;
+  font-size: 22px;
+  font-weight: 600;
+  margin: 4px 0 6px;
+}
+.team-roster-heading p:not(.eyebrow) {
+  color: #65758b;
+  font-size: 14px;
+}
+.team-roster-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0 12px;
+}
+.team-roster-filters > label:first-child {
+  flex: 1;
+  max-width: 360px;
+}
+.team-roster-filters input:not([type="checkbox"]) {
+  width: 100%;
+}
+.team-roster-filters > label:last-child,
+.team-active-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #65758b;
+  font-size: 13px;
+}
+.team-members {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.team-members > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 0;
+  border-bottom: 1px solid #edf1f6;
+}
+.team-member-identity {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+.team-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #edf3fa;
+  color: #334e70;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.team-member-identity strong {
+  display: block;
+  font-size: 14px;
+  color: #233d5c;
+  overflow-wrap: anywhere;
+}
+.team-member-identity small {
+  display: block;
+  color: #77869a;
+  font-size: 12px;
+  margin-top: 3px;
+}
+.team-member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-roster-footnote {
+  margin-top: 20px;
+  color: #77869a;
+  line-height: 1.6;
+  font-size: 12px;
+}
+.team-notice {
+  border: 1px solid #bce2d7;
+  background: #f0faf6;
+  color: #245e4c;
+  padding: 14px;
+  border-radius: 12px;
+  margin: 16px 0;
+}
+.team-member-editor {
+  padding: 20px;
+  background: #f4f7fb;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+.team-member-editor h3 {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #142f50;
+}
+.team-member-editor > label:not(.team-active-label) {
+  display: block;
+  font-size: 14px;
+  color: #334a66;
+}
+.team-member-editor > label input:not([type="checkbox"]) {
+  display: block;
+  width: 100%;
+  margin: 8px 0 14px;
+}
+.team-member-editor .team-member-actions {
+  margin-top: 18px;
+}
+.team-empty {
+  padding: 24px 0;
+  color: #65758b;
+}
+@media (max-width: 600px) {
+  .team-roster-nav {
+    gap: 8px;
+  }
+  .team-roster-nav button {
+    padding: 11px 12px;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .team-roster-panel {
+    padding: 18px;
+  }
+  .team-roster-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .team-members > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .team-member-actions {
+    margin-left: auto;
+  }
+  .team-member-editor .team-member-actions {
+    margin-left: 0;
+  }
+}

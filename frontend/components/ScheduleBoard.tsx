@@ -125,6 +125,15 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const refresh = () => { fetchMds(getToken()).then(mds => {
+      setMdMap(Object.fromEntries(mds.map(md => [md.id, md.name])));
+      setInactiveMdIds(mds.filter(md => md.active === false).map(md => md.id));
+    }).catch(error => setStatus((error as Error).message)); };
+    window.addEventListener("a3i-team-saved", refresh);
+    return () => window.removeEventListener("a3i-team-saved", refresh);
+  }, []);
+
   const hydratedSchedules = useMemo(
     () =>
       schedules

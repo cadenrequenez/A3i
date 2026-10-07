@@ -3,22 +3,28 @@ from app import models, schemas
 from app.core.security import hash_password
 
 
-def create_md(db: Session, data: schemas.MDCreate) -> models.MD:
+def create_md(db: Session, data: schemas.MDCreate, *, commit: bool = True) -> models.MD:
     md = models.MD(**data.dict())
     db.add(md)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(md)
     return md
 
 
-def update_md(db: Session, md: models.MD, data: schemas.MDUpdate) -> models.MD:
+def update_md(db: Session, md: models.MD, data: schemas.MDUpdate, *, commit: bool = True) -> models.MD:
     if data.name is not None and data.name != md.name:
         availability = dict(md.availability or {})
         availability.setdefault("scheduling_name", md.name)
         md.availability = availability
     for key, value in data.dict(exclude_unset=True).items():
         setattr(md, key, value)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(md)
     return md
 

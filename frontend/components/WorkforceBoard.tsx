@@ -8,7 +8,6 @@ import {
   normalizeWorkforceDay,
   workforceDate,
   workforceRequest,
-  type RosterMember,
   type WorkforceDay,
   type WorkforceEntry,
   type WorkforceHistory,
@@ -34,8 +33,12 @@ const blankSite = (): WorkforceSiteDay => ({
 });
 export default function WorkforceBoard({
   accountKey,
+  onManageTeam,
+  rosterVersion = 0,
 }: {
   accountKey?: string;
+  onManageTeam: () => void;
+  rosterVersion?: number;
 }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear()),
@@ -51,16 +54,8 @@ export default function WorkforceBoard({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  const [history, setHistory] = useState<WorkforceHistory[] | null>(null),
-    [rosterOpen, setRosterOpen] = useState(false),
-    [rosterDraft, setRosterDraft] = useState<WorkforceSettings | null>(null),
-    [rosterSite, setRosterSite] = useState(""),
-    [newName, setNewName] = useState("");
+  const [history, setHistory] = useState<WorkforceHistory[] | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const rosterDialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (rosterOpen) rosterDialog.current?.showModal();
-  }, [rosterOpen]);
   const requestId = useRef(0),
     dirty = JSON.stringify(draft) !== JSON.stringify(baseline),
     canEdit = getRole() === "admin";
@@ -137,6 +132,29 @@ export default function WorkforceBoard({
       accountRequestId.current++;
     };
   }, [accountKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!rosterVersion) return;
+    let active = true;
+    Promise.all([
+      workforceRequest<WorkforceSettings>("settings", getToken()),
+      workforceRequest<WorkforceMonth>(
+        `month?year=${year}&month=${month}`,
+        getToken(),
+      ),
+    ])
+      .then(([s, data]) => {
+        if (active) {
+          setSettings(s);
+          setMonthData(data);
+        }
+      })
+      .catch((e) => {
+        if (active) setError((e as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [rosterVersion, year, month]);
   useEffect(() => {
     if (loading) return;
     localStorage.setItem(keyPrefix, JSON.stringify([year, month, day]));
@@ -288,43 +306,6 @@ export default function WorkforceBoard({
       );
     } catch (e) {
       setError((e as Error).message);
-    }
-  }
-  function openRoster() {
-    if (!settings) return;
-    setRosterDraft(structuredClone(settings));
-    setRosterSite(
-      String(
-        sites.find((s) => /driscoll/i.test(s.site_name))?.id ||
-          sites[0]?.id ||
-          "",
-      ),
-    );
-    setRosterOpen(true);
-    setNewName("");
-  }
-  async function saveRoster() {
-    if (!rosterDraft || !settings) return;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await workforceRequest<WorkforceSettings>(
-        "settings",
-        getToken(),
-        {
-          expected_revision: settings.revision,
-          rosters: rosterDraft.rosters,
-          crnas: rosterDraft.crnas,
-        },
-      );
-      setSettings(saved);
-      setRosterOpen(false);
-      await load(year, month, day);
-      setNotice("Roster saved. Existing call schedules are unchanged.");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
   const selectedSaved = monthData?.days.find((d) => d.date === date),
@@ -507,10 +488,10 @@ export default function WorkforceBoard({
         </div>
         <div className="wf-toolbar">
           <button
-            onClick={openRoster}
+            onClick={onManageTeam}
             disabled={loading || busy || dirty || !canEdit}
           >
-            Manage rosters
+            Manage team
           </button>
           <button
             onClick={() => setExportOpen(true)}
@@ -959,184 +940,6 @@ export default function WorkforceBoard({
             </div>
           </div>
         )
-      )}
-      {rosterOpen && rosterDraft && (
-        <dialog
-          ref={rosterDialog}
-          className="wf-modal"
-          aria-label="Manage workforce rosters"
-          onCancel={(e) => {
-            if (busy) e.preventDefault();
-            else setRosterOpen(false);
-          }}
-        >
-          <section>
-            <div className="wf-section-heading">
-              <h2>Workforce rosters</h2>
-              <button
-                disabled={busy}
-                onClick={() => setRosterOpen(false)}
-                aria-label="Close rosters"
-              >
-                ×
-              </button>
-            </div>
-            <p>
-              Driscoll MDs stay separate from Rio. Archived people remain on
-              saved days. Temporary clinicians belong on the day only.
-            </p>
-            <label>
-              <span>Roster</span>
-              <select
-                value={rosterSite}
-                onChange={(e) => {
-                  setRosterSite(e.target.value);
-                  setNewName("");
-                }}
-              >
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {shortSite(s)} MDs
-                  </option>
-                ))}
-                <option value="crnas">Shared CRNA pool</option>
-              </select>
-            </label>
-            <div className="wf-roster-list">
-              {(rosterSite === "crnas"
-                ? rosterDraft.crnas
-                : rosterDraft.rosters[rosterSite] || []
-              ).map((m) => (
-                <div key={m.key}>
-                  <label>
-                    <span>{!m.active ? "Archived name" : "Name"}</span>
-                    <input
-                      aria-label={`Roster name for ${m.name}`}
-                      value={m.name}
-                      maxLength={100}
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        if (rosterSite === "crnas")
-                          setRosterDraft({
-                            ...rosterDraft,
-                            crnas: rosterDraft.crnas.map((p) =>
-                              p.key === m.key ? { ...p, name } : p,
-                            ),
-                          });
-                        else
-                          setRosterDraft({
-                            ...rosterDraft,
-                            rosters: Object.fromEntries(
-                              Object.entries(rosterDraft.rosters).map(
-                                ([key, list]) => [
-                                  key,
-                                  list.map((p) =>
-                                    p.key === m.key ? { ...p, name } : p,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          });
-                      }}
-                    />
-                  </label>
-                  <button
-                    onClick={() => {
-                      const update = (list: RosterMember[]) =>
-                        list.map((p) =>
-                          p.key === m.key ? { ...p, active: !p.active } : p,
-                        );
-                      setRosterDraft(
-                        rosterSite === "crnas"
-                          ? { ...rosterDraft, crnas: update(rosterDraft.crnas) }
-                          : {
-                              ...rosterDraft,
-                              rosters: {
-                                ...rosterDraft.rosters,
-                                [rosterSite]: update(
-                                  rosterDraft.rosters[rosterSite] || [],
-                                ),
-                              },
-                            },
-                      );
-                    }}
-                  >
-                    {m.active ? "Archive" : "Restore"}
-                  </button>
-                </div>
-              ))}
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const name = newName.trim();
-                if (!name) return;
-                const list =
-                  rosterSite === "crnas"
-                    ? rosterDraft.crnas
-                    : rosterDraft.rosters[rosterSite] || [];
-                if (
-                  list.some((m) => m.name.toLowerCase() === name.toLowerCase())
-                ) {
-                  setError(
-                    "That name is already on this roster. Restore it if archived.",
-                  );
-                  return;
-                }
-                const existing = allMds.find(
-                  (m) => m.name.toLowerCase() === name.toLowerCase(),
-                );
-                const member = {
-                  key:
-                    rosterSite === "crnas"
-                      ? `crna-custom-${crypto.randomUUID()}`
-                      : existing?.key || `md-custom-${crypto.randomUUID()}`,
-                  name,
-                  active: true,
-                };
-                setRosterDraft(
-                  rosterSite === "crnas"
-                    ? { ...rosterDraft, crnas: [...list, member] }
-                    : {
-                        ...rosterDraft,
-                        rosters: {
-                          ...rosterDraft.rosters,
-                          [rosterSite]: [...list, member],
-                        },
-                      },
-                );
-                setNewName("");
-              }}
-            >
-              <label>
-                <span>Add a permanent roster member</span>
-                <input
-                  value={newName}
-                  maxLength={100}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-              </label>
-              <button disabled={!newName.trim() || busy}>Add name</button>
-            </form>
-            {error && (
-              <p role="alert" className="wf-error">
-                {error}
-              </p>
-            )}
-            <div className="wf-savebar">
-              <button
-                className="wf-primary"
-                disabled={busy}
-                onClick={saveRoster}
-              >
-                {busy ? "Saving…" : "Save roster"}
-              </button>
-              <button disabled={busy} onClick={() => setRosterOpen(false)}>
-                Cancel
-              </button>
-            </div>
-          </section>
-        </dialog>
       )}
       {exportOpen && monthData && (
         <WorkforceExport
