@@ -723,7 +723,10 @@ export default function WorkforceBoard({
                   {sites.map((site) => {
                     const override = draft.sites[site.id] || blankSite(),
                       assigned = draft.entries.filter(
-                        (e) => e.site_id === site.id && e.status === "working",
+                        (e) =>
+                          e.site_id === site.id &&
+                          e.status === "working" &&
+                          (e.guest ? Boolean(e.name.trim()) : Boolean(e.key)),
                       );
                     return (
                       <section
