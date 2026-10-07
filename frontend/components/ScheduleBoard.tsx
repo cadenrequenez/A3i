@@ -372,7 +372,7 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
        const totals = new Map<string,{name:string;first:number;second:number}>();
        Object.entries(mdMap).filter(([id])=>!inactiveMdIds.includes(Number(id))).forEach(([id,name])=>totals.set(`md:${id}`,{name,first:0,second:0}));
        rows.forEach(row=>{(['first','second'] as const).forEach(call=>{const id=row.callAssignments?.[call==='first'?'first_call_md_id':'second_call_md_id'];const guest=row.callAssignments?.[call==='first'?'first_call_guest_name':'second_call_guest_name'];if(!id&&!guest)return;const key=id?`md:${id}`:`guest:${guest!.toLocaleLowerCase()}`;const item=totals.get(key)||{name:id?mdMap[id]||String(id):`${guest} (guest)`,first:0,second:0};item[call]++;totals.set(key,item);});});
-       return [...totals.entries()].map(([key,item])=><tr key={key} className="border-t"><th scope="row" className="text-left p-3 font-normal">{item.name}</th><td className="text-center">{item.first}</td><td className="text-center">{item.second}</td><td className="text-center font-semibold">{item.first+item.second}</td></tr>);
+       return [...totals.entries()].sort(([,a],[,b]) => (b.first + b.second) - (a.first + a.second) || a.name.localeCompare(b.name)).map(([key,item])=><tr key={key} className="border-t"><th scope="row" className="text-left p-3 font-normal">{item.name}</th><td className="text-center">{item.first}</td><td className="text-center">{item.second}</td><td className="text-center font-semibold">{item.first+item.second}</td></tr>);
      })()}</tbody></table></div></details>
      {suggestionStatus&&<p role="status" className="status-message">{suggestionStatus}</p>}
       {suggestions.length > 0 && (
