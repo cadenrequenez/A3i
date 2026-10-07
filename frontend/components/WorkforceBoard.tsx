@@ -887,8 +887,14 @@ export default function WorkforceBoard({
                                     yesterday.getDate(),
                                   ) && /regional hospital/i.test(c.facility),
                             );
-                            const name = c?.callFirstName;
-                            const member = allMds.find((m) => m.name === name);
+                            const member = allMds.find(
+                              (m) =>
+                                m.key ===
+                                `md-${c?.callAssignments?.first_call_md_id}`,
+                            );
+                            const name =
+                              member?.name ||
+                              c?.callAssignments?.first_call_guest_name;
                             return name && shortSite(selected) === "Rio" ? (
                               <button
                                 disabled={shown.some(
