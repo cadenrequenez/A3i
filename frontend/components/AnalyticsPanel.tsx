@@ -1,5 +1,6 @@
 "use client";
 
+import { mdSchedulingName } from "../lib/mdNames";
 import { useEffect, useState } from "react";
 import { fetchFacilities, scoreSchedule } from "../lib/api";
 import { getToken } from "../lib/auth";
@@ -118,7 +119,7 @@ export default function AnalyticsPanel() {
                   .sort((a, b) => b.score - a.score)
                   .map((row) => (
                     <tr key={row.md_id} className="border-b border-slate-100">
-                      <td className="px-2 py-1">{row.name}</td>
+                      <td className="px-2 py-1">{mdSchedulingName(row.name)}</td>
                       <td className="px-2 py-1">{row.first_call_count}</td>
                       <td className="px-2 py-1">{row.second_call_count}</td>
                       <td className="px-2 py-1">{row.weekend_count}</td>

@@ -17,6 +17,7 @@ export function postedMdName(name: string) {
     "edward requenez": "E. REQUENEZ",
     "ricky salinas": "SALINAS",
     "mike gorena": "GORENA",
+    "michael gorena": "GORENA",
     "maria lozano": "LOZANO",
     "erika schwegler": "SCHWEGLER",
     euleche: "EULECHE",

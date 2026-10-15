@@ -1,4 +1,5 @@
 "use client";
+import { mdChoices, mdSchedulingName, staffSchedulingName } from "../lib/mdNames";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchFacilities, fetchSchedules } from "../lib/api";
 import { getRole, getToken } from "../lib/auth";
@@ -356,7 +357,8 @@ export default function WorkforceBoard({
     apply: (patch: Partial<WorkforceEntry>) => void,
     name: string,
   ) {
-    const members = source(e);
+    const available = source(e).filter(m=>m.active || m.key===e.key);
+    const members = e.kind === "md" ? mdChoices(available,e.key) : available;
     return e.guest ? (
       <div className="wd-guest">
         <input
@@ -391,11 +393,11 @@ export default function WorkforceBoard({
           .filter((m) => m.active || m.key === e.key)
           .map((m) => (
             <option key={m.key} value={m.key}>
-              {m.name}
+              {staffSchedulingName(m.name,e.kind)}
               {m.active ? "" : " (removed)"}
             </option>
           ))}
-        <option value="guest">Type temporary clinician…</option>
+        <option value="guest">{e.kind === "md" ? "Add on name…" : "Type temporary clinician…"}</option>
       </select>
     );
   }
@@ -464,13 +466,13 @@ export default function WorkforceBoard({
             {entries
               .filter((e) => e.kind === "md" && e.status !== "post_call")
               .map((e, i) => (
-                <span key={i}>{e.name}</span>
+                <span key={i}>{mdSchedulingName(e.name)}</span>
               ))}
             {entries
               .filter((e) => e.status === "post_call")
               .map((e, i) => (
                 <span className="wd-post" key={`post-${i}`}>
-                  *{e.name}
+                  *{mdSchedulingName(e.name)}
                 </span>
               ))}
           </div>
@@ -493,7 +495,7 @@ export default function WorkforceBoard({
             Off · office only:{" "}
             {p.entries
               .filter((e) => e.status === "off")
-              .map((e) => e.name)
+              .map((e) => staffSchedulingName(e.name,e.kind))
               .join(", ")}
           </small>
         )}
@@ -857,7 +859,7 @@ export default function WorkforceBoard({
                             .filter(({ e }) => e.status === "post_call")
                             .map(({ e, i }) => (
                               <div key={i} className="wd-chip">
-                                *{e.name}
+                                *{mdSchedulingName(e.name)}
                                 {!chosen(e) &&
                                   nameSelect(
                                     e,
@@ -914,7 +916,7 @@ export default function WorkforceBoard({
                                   })
                                 }
                               >
-                                Add *{name} · previous 1st call
+                                Add *{mdSchedulingName(name)} · previous 1st call
                               </button>
                             ) : null;
                           })()}
@@ -1086,7 +1088,7 @@ export default function WorkforceBoard({
                             e.status === "off" ? (
                               <div className="wd-chip" key={i}>
                                 {chosen(e)
-                                  ? e.name
+                                  ? staffSchedulingName(e.name,e.kind)
                                   : nameSelect(
                                       e,
                                       (p) => edit(i, p),
@@ -1193,7 +1195,7 @@ export default function WorkforceBoard({
                               })
                             }
                           />
-                          {e.name || e.kind} · Admin duty
+                          {staffSchedulingName(e.name,e.kind) || e.kind} · Admin duty
                         </label>
                       ) : null,
                     )}

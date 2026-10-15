@@ -1,4 +1,5 @@
 "use client";
+import { mdSchedulingName, staffSchedulingName } from "../lib/mdNames";
 import { useEffect, useState, useRef } from "react";
 import type { ReactNode, ReactPortal } from "react";
 const { createPortal } = require("react-dom") as {
@@ -131,7 +132,7 @@ export default function WorkforceExport({
         Object.values(d.payload.sites).some((s) => !!s.note)),
   );
   const driscoll = !relief && !!site && isDriscoll(site.site_name);
-  const mdName = (name: string) => (driscoll ? postedMdName(name) : name);
+  const mdName = (name: string) => (driscoll ? postedMdName(mdSchedulingName(name)) : mdSchedulingName(name));
   const maxColumnLines = Math.max(
     0,
     ...safe.days.flatMap((d) =>
@@ -521,7 +522,7 @@ export default function WorkforceExport({
                             ) : null}
                             {audience === "office" && off.length > 0 && (
                               <p className="wf-print-off">
-                                <b>Off</b> {off.map((e) => e.name).join(", ")}
+                                <b>Off</b> {off.map((e) => staffSchedulingName(e.name,e.kind)).join(", ")}
                               </p>
                             )}
                             {p?.note && (

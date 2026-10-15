@@ -1,3 +1,4 @@
+import { staffSchedulingName } from "./mdNames";
 import { zip } from "./scheduleWorkbook";
 import {
   workforceDate,
@@ -69,7 +70,7 @@ export function workforceWorkbook(
           )
           .map(
             (e) =>
-              `${e.kind === "md" && (e.status === "post_call" || entries.some((m) => m.site_id === s.id && m.status === "post_call" && m.name === e.name)) ? "*" : ""}${e.name}${e.status === "admin" ? " · Admin" : ""}${e.note ? ` · ${e.note}` : ""}`,
+              `${e.kind === "md" && (e.status === "post_call" || entries.some((m) => m.site_id === s.id && m.status === "post_call" && m.name === e.name)) ? "*" : ""}${staffSchedulingName(e.name,e.kind)}${e.status === "admin" ? " · Admin" : ""}${e.note ? ` · ${e.note}` : ""}`,
           )
           .join("\n"),
         entries
@@ -79,14 +80,14 @@ export function workforceWorkbook(
           )
           .map(
             (e) =>
-              `${e.kind === "md" && (e.status === "post_call" || entries.some((m) => m.site_id === s.id && m.status === "post_call" && m.name === e.name)) ? "*" : ""}${e.name}${e.status === "admin" ? " · Admin" : ""}${e.note ? ` · ${e.note}` : ""}`,
+              `${e.kind === "md" && (e.status === "post_call" || entries.some((m) => m.site_id === s.id && m.status === "post_call" && m.name === e.name)) ? "*" : ""}${staffSchedulingName(e.name,e.kind)}${e.status === "admin" ? " · Admin" : ""}${e.note ? ` · ${e.note}` : ""}`,
           )
           .join("\n"),
         entries
           .filter((e) => e.status === "off")
           .map(
             (e) =>
-              `${e.name} (${e.kind.toUpperCase()})${e.note ? ` · ${e.note}` : ""}`,
+              `${staffSchedulingName(e.name,e.kind)} (${e.kind.toUpperCase()})${e.note ? ` · ${e.note}` : ""}`,
           )
           .join("\n"),
         `${override?.closed ? "Closed" : `${override?.md ?? s.staffing_requirements?.md ?? 0} MD / ${override?.crna ?? s.staffing_requirements?.crna ?? 0} CRNA`}${override?.note ? `\n${override.note}` : ""}${p?.note ? `\n${p.note}` : ""}`,
@@ -113,7 +114,7 @@ export function workforceWorkbook(
           .join("\n"),
         (p?.entries || [])
           .filter((e) => e.status === "off")
-          .map((e) => e.name)
+          .map((e) => staffSchedulingName(e.name,e.kind))
           .join("\n"),
         p?.note || "",
       ];

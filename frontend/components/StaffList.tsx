@@ -1,4 +1,5 @@
 "use client";
+import { compareMdNames, mdSchedulingName } from "../lib/mdNames";
 import { useEffect, useState } from "react";
 import { fetchCrnas, fetchMds, saveStaff } from "../lib/api";
 import { getRole, getToken } from "../lib/auth";
@@ -233,15 +234,16 @@ export default function StaffList({
                   .filter(
                     (p) =>
                       (showRemoved || p.active !== false) &&
-                      p.name.toLowerCase().includes(query.toLowerCase()),
+                      (p.name.toLowerCase().includes(query.toLowerCase()) || (kind === "mds" && mdSchedulingName(p.name).toLowerCase().includes(query.toLowerCase()))),
                   )
+                  .sort((a,b)=>kind === "mds" ? compareMdNames(a.name,b.name) : 0)
                   .map((p) => (
                     <li
                       key={p.id}
                       className="flex items-center justify-between gap-3"
                     >
                       <div>
-                        <p>{p.name}</p>
+                        <p>{kind === "mds" ? mdSchedulingName(p.name) : p.name}</p>
                         <p className="text-xs text-slate-500">
                           {p.active === false ? "Inactive · " : ""}
                           {p.pedi_qualified ? "Pedi" : "General"} ·{" "}

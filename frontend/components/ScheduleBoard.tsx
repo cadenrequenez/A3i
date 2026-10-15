@@ -14,6 +14,7 @@ import {
   updateSchedule,
   saveManualCallDay, hasMonthBackup, changeManualMonth, timeOffRequest, type TimeOff
 } from "../lib/api";
+import { compareMdNames, mdSchedulingName } from "../lib/mdNames";
 import { getRole, getToken } from "../lib/auth";
 
 const RIO_FACILITY = "Rio Grande Regional Hospital";
@@ -113,7 +114,7 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
       .then(([mds, facilities]) => {
         const mdLookup: Record<number, string> = {};
         mds.forEach((md) => {
-          mdLookup[md.id] = md.name;
+          mdLookup[md.id] = mdSchedulingName(md.name);
         });
         setMdMap(mdLookup);
         setInactiveMdIds(mds.filter(md => md.active === false).map(md => md.id));
@@ -127,7 +128,7 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
 
   useEffect(() => {
     const refresh = () => { fetchMds(getToken()).then(mds => {
-      setMdMap(Object.fromEntries(mds.map(md => [md.id, md.name])));
+      setMdMap(Object.fromEntries(mds.map(md => [md.id, mdSchedulingName(md.name)])));
       setInactiveMdIds(mds.filter(md => md.active === false).map(md => md.id));
     }).catch(error => setStatus((error as Error).message)); };
     window.addEventListener("a3i-team-saved", refresh);
@@ -338,8 +339,9 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
         {([['first', '1st call', editCallFirst, firstGuest, setEditCallFirst, setFirstGuest], ['second', '2nd call', editCallSecond, secondGuest, setEditCallSecond, setSecondGuest]] as const).map(([key,label,id,guest,setId,setGuest]) => <div key={key}>
           <label className="field-label" htmlFor={`${key}-call`}>{label}</label>
           <select id={`${key}-call`} disabled={role!=="admin"||saving||loading} value={guest!==null?'guest':id??''} onChange={e=>{const value=e.target.value;setId(value==='guest'?null:Number(value)||null);setGuest(value==='guest'?'':null);}}>
-            <option value="">Unassigned</option><option value="guest">Type a guest / locum name…</option>
-            {Object.entries(mdMap).filter(([doctorId])=>!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
+            <option value="">Unassigned</option>
+            {Object.entries(mdMap).sort(([,a],[,b])=>compareMdNames(a,b)).filter(([doctorId])=>!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
+            <option value="guest">Add on name…</option>
           </select>
           {guest!==null&&<><label className="field-label" htmlFor={`${key}-guest`}>Guest / locum name</label><input id={`${key}-guest`} maxLength={120} value={guest} disabled={role!=="admin"||saving} placeholder="Type the doctor’s name" onChange={e=>setGuest(e.target.value)}/><p className="mt-2 text-xs text-slate-600">Saved on this day only. Never added to the roster.</p></>}
         </div>)}
@@ -349,7 +351,7 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
             <div className="flex items-center gap-2">
               <select className="min-w-0 flex-1" id={`off-doctor-${index}`} value={id??''} onChange={e=>setOffSlots(previous=>previous.map((value,slot)=>slot===index?Number(e.target.value)||null:value))}>
                 <option value="">Unassigned</option>
-                {Object.entries(mdMap).filter(([doctorId])=>(!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id)&&(!editOffIds.includes(Number(doctorId))||Number(doctorId)===id)).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
+                {Object.entries(mdMap).sort(([,a],[,b])=>compareMdNames(a,b)).filter(([doctorId])=>(!inactiveMdIds.includes(Number(doctorId))||Number(doctorId)===id)&&(!editOffIds.includes(Number(doctorId))||Number(doctorId)===id)).map(([doctorId,name])=><option key={doctorId} value={doctorId} disabled={inactiveMdIds.includes(Number(doctorId))}>{name}{inactiveMdIds.includes(Number(doctorId))?' (removed)':''}</option>)}
               </select>
               {role==='admin'&&offSlots.length>1&&<button type="button" className="secondary-button" aria-label={`Remove off selection ${index+1}${id?` for ${mdMap[id]}`:''}`} onClick={()=>setOffSlots(previous=>previous.filter((_,slot)=>slot!==index))}>Remove</button>}
             </div>
@@ -370,7 +372,7 @@ export default function ScheduleBoard({accountKey,onNavigationLockChange}:{accou
      <details id="call-totals" className="surface-card rounded-xl p-4 mt-4"><summary className="cursor-pointer py-2 font-semibold">Monthly call totals · {monthLabel}</summary><p className="text-sm text-slate-600 my-3">Counts update when you save. Partial days count toward the assigned call.</p><div className="overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">Saved call assignments by doctor for {monthLabel}</caption><thead><tr><th scope="col" className="text-left p-3">Doctor</th><th scope="col">1st call</th><th scope="col">2nd call</th><th scope="col">Total</th></tr></thead><tbody>{(() => {
        const rows = hydratedSchedules.filter(r=>r.date.startsWith(`${year}-${String(month).padStart(2,'0')}-`));
        const totals = new Map<string,{name:string;first:number;second:number}>();
-       Object.entries(mdMap).filter(([id])=>!inactiveMdIds.includes(Number(id))).forEach(([id,name])=>totals.set(`md:${id}`,{name,first:0,second:0}));
+       Object.entries(mdMap).sort(([,a],[,b])=>compareMdNames(a,b)).filter(([id])=>!inactiveMdIds.includes(Number(id))).forEach(([id,name])=>totals.set(`md:${id}`,{name,first:0,second:0}));
        rows.forEach(row=>{(['first','second'] as const).forEach(call=>{const id=row.callAssignments?.[call==='first'?'first_call_md_id':'second_call_md_id'];const guest=row.callAssignments?.[call==='first'?'first_call_guest_name':'second_call_guest_name'];if(!id&&!guest)return;const key=id?`md:${id}`:`guest:${guest!.toLocaleLowerCase()}`;const item=totals.get(key)||{name:id?mdMap[id]||String(id):`${guest} (guest)`,first:0,second:0};item[call]++;totals.set(key,item);});});
        return [...totals.entries()].sort(([,a],[,b]) => (b.first + b.second) - (a.first + a.second) || a.name.localeCompare(b.name)).map(([key,item])=><tr key={key} className="border-t"><th scope="row" className="text-left p-3 font-normal">{item.name}</th><td className="text-center">{item.first}</td><td className="text-center">{item.second}</td><td className="text-center font-semibold">{item.first+item.second}</td></tr>);
      })()}</tbody></table></div></details>

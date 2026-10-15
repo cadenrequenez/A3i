@@ -8,6 +8,7 @@ import {
   type RosterMember,
   type WorkforceSettings,
 } from "../lib/workforce";
+import { compareMdNames, mdSchedulingName } from "../lib/mdNames";
 import StaffList from "./StaffList";
 
 const labelFor = (site: Facility) =>
@@ -374,9 +375,9 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
               .filter(
                 (m) =>
                   (removed || m.active) &&
-                  m.name.toLowerCase().includes(query.toLowerCase()),
+                  (m.name.toLowerCase().includes(query.toLowerCase()) || (!isCrnaGroup && mdSchedulingName(m.name).toLowerCase().includes(query.toLowerCase()))),
               )
-              .sort((a, b) => a.name.localeCompare(b.name))
+              .sort((a, b) => isCrnaGroup ? a.name.localeCompare(b.name) : compareMdNames(a.name,b.name))
               .map((m) => (
                 <li key={m.key}>
                   <div className="team-member-identity">
@@ -389,7 +390,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
                         .join("")}
                     </span>
                     <div>
-                      <strong>{m.name}</strong>
+                      <strong>{isCrnaGroup ? m.name : mdSchedulingName(m.name)}</strong>
                       <small>
                         {m.active
                           ? selected === "crnas"
@@ -431,7 +432,7 @@ export default function TeamRoster({ onSaved }: { onSaved: () => void }) {
           {!members.some(
             (m) =>
               (removed || m.active) &&
-              m.name.toLowerCase().includes(query.toLowerCase()),
+              (m.name.toLowerCase().includes(query.toLowerCase()) || (!isCrnaGroup && mdSchedulingName(m.name).toLowerCase().includes(query.toLowerCase()))),
           ) && (
             <p className="team-empty">
               {query
