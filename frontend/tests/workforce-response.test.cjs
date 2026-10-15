@@ -1,0 +1,7 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const ts=require('typescript');const Module=require('node:module');const path=require('node:path');
+const filename=path.join(__dirname,'../lib/workforce.ts');const subject=new Module(filename,module);subject.require=name=>name==='./api'?{fetchApi:async()=>Response.json(global.fixture)}:require(name);subject._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
+const {validateWorkforceMonth,workforceRequest}=subject.exports;
+const valid={year:2026,month:10,revision:0,status:'draft',days:[]};
+test('valid empty month remains an explicit usable draft',()=>assert.doesNotThrow(()=>validateWorkforceMonth(valid)));
+test('missing, malformed and incomplete months are rejected rather than silently emptied',()=>{for(const data of [null,[],{}, {...valid,days:null},{...valid,days:{}},{...valid,days:[{}]},{...valid,days:[{date:'2026-10-01',revision:0,warnings:[],payload:{entries:null,sites:{},note:'',reviewed:false}}]}])assert.throws(()=>validateWorkforceMonth(data),/invalid month/);});
+test('request boundary rejects malformed month before board state is set',async()=>{global.fixture=[];await assert.rejects(workforceRequest('month?year=2026&month=10','local-demo'),/invalid month/);global.fixture=valid;assert.deepEqual(await workforceRequest('month?year=2026&month=10','local-demo'),valid);});

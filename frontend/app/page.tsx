@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import FeedbackPanel from "../components/FeedbackPanel";
 import ScheduleWorkspace from "../components/ScheduleWorkspace";
 import WorkforceBoard from "../components/WorkforceBoard";
 import TeamRoster from "../components/TeamRoster";
@@ -8,17 +9,21 @@ import AnalyticsPanel from "../components/AnalyticsPanel";
 import { getToken, watchAccountSession } from "../lib/auth";
 import { API_BASE_URL } from "../lib/connection";
 import { fetchProfile, type AccountProfile } from "../lib/api";
-const TABS = ["Schedule", "Workforce", "Staff", "Sites", "Analytics"] as const;
+const TABS = ["Schedule", "Workforce", "Staff", "Sites", "Analytics", "Requests"] as const;
 const icons = [
   "M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z",
   "M3 6h18M3 12h18M3 18h18M8 3v18M16 3v18",
   "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8m8 .13a4 4 0 0 1 0 7.75",
   "M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0ZM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6",
   "M4 19V9m8 10V4m8 15v-7M2 22h20",
+  "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5Z",
 ];
 export default function DashboardPage() {
   useEffect(() => watchAccountSession(), []);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Schedule");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("section") === "requests") setActiveTab("Requests");
+  }, []);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   useEffect(() => {
     fetchProfile(getToken())
@@ -149,7 +154,8 @@ export default function DashboardPage() {
             onSaveGuard={registerWorkforceSave}
           />
         </div>
-        {activeTab !== "Schedule" && activeTab !== "Workforce" && (
+        {activeTab === "Requests" && <FeedbackPanel />}
+        {activeTab !== "Schedule" && activeTab !== "Workforce" && activeTab !== "Requests" && (
           <div className="workspace-section">
             <p className="eyebrow">A3i workspace</p>
             <h1 className="section-title">

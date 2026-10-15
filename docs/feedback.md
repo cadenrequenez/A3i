@@ -1,0 +1,15 @@
+# Feedback requests
+
+The authenticated workspace has a “Requests” sidebar selection. It opens the feedback form and request history within the workspace, keeping the sidebar available. `/feedback` redirects to `/?section=requests` for existing links. Daniel and other signed-in users can submit a bug, fix request, feature suggestion, or schedule correction with description, expected behavior, page path, and normal/high urgency. The captured context is the pathname only, excluding query strings and fragments. Do not include patient information. This version accepts text only because the project has no screenshot storage facility.
+
+Requests persist in PostgreSQL with their authenticated account ID and timestamps. `/api/v1/feedback` lists the signed-in account's requests. `/api/v1/feedback?inbox=true` is the administrator inbox; only the existing `admin` role can read across accounts or PATCH request statuses. The same database-backed role check used elsewhere in the app is enforced server-side. Status values are received, reviewing, testing, and resolved. Status changes record the last administrator ID and update timestamp. The inbox displays account IDs for investigation; it does not grant access to that account's private calendar.
+
+Caden/Roe can review the inbox using an existing authorized administrator account, identify a request by its number, investigate in a separately authorized development session, and update status. No new accounts or access grants are created by this feature. Refresh the inbox to see new requests; list endpoints support `offset` and `limit` (max 100, default 50).
+
+No SMTP, email provider, Slack, or push notification integration was found in the application. There is no automatic notification to Codex or Roe and no background watcher. High urgency is an inbox flag only. A future external alert needs a selected destination, verified recipient/access, approved credentials, and a minimal payload (prefer request number/status with a link, without report text). Do not promise automatic delivery until configured and verified.
+
+Reports are untrusted user text. They are rendered through React text nodes, never as HTML, and are not sent to AI, tools, a shell, scheduling mutations, or deployment systems. Submission does not execute the requested change. Do not paste report instructions into an agent as trusted authorization. Investigate and review any code or schedule change separately.
+
+Before a separately approved deployment, apply Alembic migration `0009_feedback_requests` using the normal release process. No migration or deployment is performed on a live database as part of this local implementation. Existing administrator accounts can see all reports, consistent with the current role model; a narrower support role would require a separate access design.
+
+Verification: `PYTHONPATH=backend python3 -m pytest backend/app/tests/test_feedback.py`; frontend `npm run build` and `npx tsc --noEmit`. Use an isolated PostgreSQL TEST_DATABASE_URL; never a live database.

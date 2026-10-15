@@ -129,6 +129,22 @@ export const emptyWorkforceDay = (): WorkforcePayload => ({
 export const normalizeWorkforceDay = (
   p?: Partial<WorkforcePayload>,
 ): WorkforcePayload => ({ ...emptyWorkforceDay(), ...p });
+// Reject malformed API data before the board stores it or offers editing.
+export function validateWorkforceMonth(data: unknown): asserts data is WorkforceMonth {
+  const record = (value: unknown): value is Record<string, any> =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  if (!record(data) || !Number.isInteger(data.year) || !Number.isInteger(data.month) ||
+      data.month < 1 || data.month > 12 || !Number.isInteger(data.revision) ||
+      !["draft", "ready"].includes(data.status) || !Array.isArray(data.days) ||
+      data.days.some((day: unknown) => !record(day) || typeof day.date !== "string" ||
+        !Number.isInteger(day.revision) || !Array.isArray(day.warnings) ||
+        !record(day.payload) || !Array.isArray(day.payload.entries) ||
+        !record(day.payload.sites) || typeof day.payload.note !== "string" ||
+        typeof day.payload.reviewed !== "boolean")) {
+    throw new Error("The workforce service returned an invalid month. Please reload or report this problem; no schedule edits were saved.");
+  }
+}
+
 export async function workforceRequest<T>(
   path: string,
   token: string | undefined,
@@ -152,6 +168,7 @@ export async function workforceRequest<T>(
           ? "The workforce update is still deploying. Please try again shortly."
           : "Unable to save. Your edits are still here. Please try again.",
     );
+  if (path.split("?")[0] === "month") validateWorkforceMonth(data);
   return data;
 }
 export const workforceDate = (year: number, month: number, day: number) =>
