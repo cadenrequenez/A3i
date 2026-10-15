@@ -1,8 +1,8 @@
 "use client";
 
-import { mdSchedulingName } from "../lib/mdNames";
-import { useEffect, useState } from "react";
-import { fetchFacilities, scoreSchedule } from "../lib/api";
+import { compareMdNames, mdSchedulingName } from "../lib/mdNames";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchFacilities, fetchMds, scoreSchedule } from "../lib/api";
 import { getToken } from "../lib/auth";
 import type { ScheduleScoreResponse } from "../lib/types";
 
@@ -16,6 +16,7 @@ export default function AnalyticsPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [facilityId, setFacilityId] = useState<number | null>(null);
+  const latestRequest = useRef(0);
 
   useEffect(() => {
     const token = getToken();
@@ -27,29 +28,60 @@ export default function AnalyticsPanel() {
       .catch(() => setStatus("Failed to load facilities."));
   }, []);
 
-  const runAnalytics = async () => {
+  const runAnalytics = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     if (!facilityId) {
       setStatus("Rio Grande facility not found.");
+      return;
+    }
+    if (!Number.isInteger(year) || year < 2024 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
+      setStatus("Choose a valid month and year.");
+      setScoreData(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setStatus(null);
     try {
-      const result = await scoreSchedule(facilityId, year, month, getToken() || undefined);
-      setScoreData(result);
+      const token = getToken();
+      const [result, roster] = await Promise.all([
+        scoreSchedule(facilityId, year, month, token),
+        fetchMds(token),
+      ]);
+      if (requestId !== latestRequest.current) return;
+      const byId = new Map(result.per_md.map(row => [row.md_id, row]));
+      const activeIds = new Set(roster.filter(md => md.active !== false).map(md => md.id));
+      const rows = roster.filter(md => md.active !== false).map(md => ({
+        md_id: md.id,
+        first_call_count: 0,
+        second_call_count: 0,
+        weekend_count: 0,
+        back_to_back_first_count: 0,
+        back_to_back_weekend_count: 0,
+        total_call: 0,
+        score: 0,
+        ...byId.get(md.id),
+        name: md.name,
+      }));
+      // Keep earlier calls readable when a doctor has since left the active list.
+      const earlier = result.per_md.filter(row => !activeIds.has(row.md_id) && row.total_call > 0)
+        .map(row => ({ ...row, name: roster.find(md => md.id === row.md_id)?.name || row.name }));
+      setScoreData({ ...result, per_md: [...rows, ...earlier] });
     } catch (error) {
+      if (requestId !== latestRequest.current) return;
       setStatus((error as Error).message || "Failed to load analytics.");
       setScoreData(null);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  };
+  }, [facilityId, year, month]);
 
   useEffect(() => {
     if (facilityId) {
       runAnalytics().catch(() => undefined);
     }
-  }, [facilityId, year, month]);
+    return () => { latestRequest.current += 1; };
+  }, [facilityId, runAnalytics]);
 
   return (
     <section className="surface-card rounded-xl p-6">
@@ -57,7 +89,7 @@ export default function AnalyticsPanel() {
         <div>
           <h2 className="text-lg font-semibold">Analytics</h2>
           <p className="text-sm text-slate-600">
-            Fairness score and MD call distribution for the selected month.
+            Your full Rio MD list, including zero calls. Most calls first.
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -116,7 +148,7 @@ export default function AnalyticsPanel() {
               <tbody>
                 {scoreData.per_md
                   .slice()
-                  .sort((a, b) => b.score - a.score)
+                  .sort((a, b) => b.total_call - a.total_call || compareMdNames(a.name, b.name))
                   .map((row) => (
                     <tr key={row.md_id} className="border-b border-slate-100">
                       <td className="px-2 py-1">{mdSchedulingName(row.name)}</td>
