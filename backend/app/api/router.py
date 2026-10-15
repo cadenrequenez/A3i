@@ -10,3 +10,6 @@ api_router.include_router(schedules.router)
 api_router.include_router(driscoll_call.router)
 
 api_router.include_router(workforce.router)
+
+from app.api.routes import feedback
+api_router.include_router(feedback.router)

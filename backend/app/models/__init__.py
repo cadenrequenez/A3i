@@ -5,3 +5,5 @@ from app.models.user import User
 from app.models.workforce import WorkforceSettings, WorkforceDay, WorkforceHistory, WorkforceMonth, WorkforceIssue
 
 __all__ = ["MD", "CRNA", "Facility", "Schedule", "User"]
+
+from app.models.feedback import FeedbackRequest
