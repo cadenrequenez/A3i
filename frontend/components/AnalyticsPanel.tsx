@@ -15,25 +15,10 @@ export default function AnalyticsPanel() {
   const [scoreData, setScoreData] = useState<ScheduleScoreResponse | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [facilityId, setFacilityId] = useState<number | null>(null);
   const latestRequest = useRef(0);
-
-  useEffect(() => {
-    const token = getToken();
-    fetchFacilities(token)
-      .then((rows) => {
-        const rio = rows.find((item) => item.site_name === RIO_FACILITY);
-        setFacilityId(rio?.id ?? null);
-      })
-      .catch(() => setStatus("Failed to load facilities."));
-  }, []);
 
   const runAnalytics = useCallback(async () => {
     const requestId = ++latestRequest.current;
-    if (!facilityId) {
-      setStatus("Rio Grande facility not found.");
-      return;
-    }
     if (!Number.isInteger(year) || year < 2024 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
       setStatus("Choose a valid month and year.");
       setScoreData(null);
@@ -44,10 +29,14 @@ export default function AnalyticsPanel() {
     setStatus(null);
     try {
       const token = getToken();
-      const [result, roster] = await Promise.all([
-        scoreSchedule(facilityId, year, month, token),
+      const [facilities, roster] = await Promise.all([
+        fetchFacilities(token),
         fetchMds(token),
       ]);
+      if (requestId !== latestRequest.current) return;
+      const facility = facilities.find(site => site.site_name === RIO_FACILITY);
+      if (!facility) throw new Error("Rio Grande facility not found.");
+      const result = await scoreSchedule(facility.id, year, month, token);
       if (requestId !== latestRequest.current) return;
       const byId = new Map(result.per_md.map(row => [row.md_id, row]));
       const activeIds = new Set(roster.filter(md => md.active !== false).map(md => md.id));
@@ -74,14 +63,12 @@ export default function AnalyticsPanel() {
     } finally {
       if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [facilityId, year, month]);
+  }, [year, month]);
 
   useEffect(() => {
-    if (facilityId) {
-      runAnalytics().catch(() => undefined);
-    }
+    runAnalytics().catch(() => undefined);
     return () => { latestRequest.current += 1; };
-  }, [facilityId, runAnalytics]);
+  }, [runAnalytics]);
 
   return (
     <section className="surface-card rounded-xl p-6">
